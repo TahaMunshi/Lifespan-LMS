@@ -1,9 +1,10 @@
 {
-    "version": 2,
-    "rewrites": [
-      {
-        "source": "/:path*",
-        "destination": "https://lifespan-evaluation-preview.brainwilliamdocs.chatgpt.site/:path*"
-      }
-    ]
-  }
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "https://lifespan-evaluation-preview.brainwilliamdocs.chatgpt.site/$1"
+    }
+  ]
+}
