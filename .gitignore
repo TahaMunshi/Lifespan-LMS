@@ -1,0 +1,13 @@
+# Dependencies / build
+node_modules/
+.vercel/
+
+# Local scratch / archived preview source
+_site_fetch/
+_extract.py
+__pycache__/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.log
