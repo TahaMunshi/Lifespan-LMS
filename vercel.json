@@ -1,0 +1,9 @@
+{
+    "version": 2,
+    "rewrites": [
+      {
+        "source": "/:path*",
+        "destination": "https://lifespan-evaluation-preview.brainwilliamdocs.chatgpt.site/:path*"
+      }
+    ]
+  }
