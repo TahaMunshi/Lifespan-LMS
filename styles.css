@@ -176,6 +176,36 @@ legend{font-weight:600;padding:0;margin-bottom:12px}
   padding:40px 20px;
 }
 .success h1{color:var(--navy)}
+.text-link{
+  color:#9bc787;
+  font-weight:600;
+  font-size:13px;
+  background:none;
+  border:0;
+  padding:0;
+  text-decoration:underline;
+  cursor:pointer;
+}
+.certificate-canvas{
+  width:100%;
+  height:auto;
+  display:block;
+  border:1px solid #bbcad4;
+  background:white;
+  margin-top:16px;
+}
+.certificate-actions{justify-content:center;margin-top:24px}
+.cert-main{max-width:1100px}
+.center{text-align:center}
+.detail-row{
+  display:flex;
+  justify-content:space-between;
+  gap:28px;
+  padding:16px 0;
+  border-bottom:1px solid var(--line);
+  font-size:14px;
+}
+.detail-row span:last-child{text-align:right;max-width:65%}
 #toast{
   position:fixed;bottom:25px;right:25px;
   background:var(--navy);color:white;
@@ -186,12 +216,10 @@ legend{font-weight:600;padding:0;margin-bottom:12px}
 #toast.show{display:block}
 .skip{position:fixed;left:8px;top:-60px;background:white;padding:12px;z-index:200}
 .skip:focus{top:8px}
-@media(max-width:760px){
-  .form-only .topbar{padding:14px 16px;flex-wrap:wrap}
-  .form-only .topbar .meta{margin-left:0;text-align:left;width:100%}
-  .form-only main{padding:18px 14px 56px}
-  .panel{padding:18px}
-  .three{grid-template-columns:1fr}
-  .choice{padding:8px 10px}
-  h1{font-size:24px}
+@media print{
+  body{background:white}
+  .topbar,.note,.certificate-actions,.skip,#toast{display:none!important}
+  main,.certificate-panel{padding:0;margin:0;max-width:none;border:0;box-shadow:none}
+  .certificate-canvas{width:100%;border:0}
+  @page{size:A4 landscape;margin:8mm}
 }

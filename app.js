@@ -7,6 +7,8 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({
 
 const KEY = 'lifespan-eval-form-v1';
 const COURSE = 'Words are Not Enough: Sensorimotor Interventions for Suicidality among Adults, Adolescents and Children';
+const INSTRUCTORS = 'Pat Ogden, PhD and Bonnie Goldstein, PhD';
+const CE_HOURS = 6;
 
 const LIKERT = [
   { value: '1', label: '1 ★ Strongly Disagree' },
@@ -111,20 +113,28 @@ const defaultAnswers = () => ({
 });
 
 let page = 0;
-let submitted = false;
+let view = 'form'; // 'form' | 'certificate'
 let answers = defaultAnswers();
+let certificateReady = false;
+let certNumber = 'LLI-2026-' + String(Date.now()).slice(-6);
 
 try {
   const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
   if (saved?.answers) answers = { ...defaultAnswers(), ...saved.answers, pat: { ...defaultAnswers().pat, ...(saved.answers.pat || {}) }, bonnie: { ...defaultAnswers().bonnie, ...(saved.answers.bonnie || {}) } };
   if (typeof saved?.page === 'number') page = Math.min(Math.max(saved.page, 0), PAGES.length - 1);
-  if (saved?.submitted) submitted = true;
+  if (saved?.view === 'certificate') view = 'certificate';
+  if (saved?.certNumber) certNumber = saved.certNumber;
 } catch { /* ignore corrupt storage */ }
 
 const persist = () => {
   try {
-    localStorage.setItem(KEY, JSON.stringify({ answers, page, submitted }));
+    localStorage.setItem(KEY, JSON.stringify({ answers, page, view, certNumber }));
   } catch { /* storage unavailable */ }
+};
+
+const participantName = () => {
+  const parts = [answers.title, answers.firstName, answers.lastName].map((s) => String(s || '').trim()).filter(Boolean);
+  return parts.length ? parts.join(' ') : 'Margaret Whitfield, LCSW';
 };
 
 const toast = (msg) => {
@@ -173,7 +183,10 @@ const steps = () => `
 const shell = (body) => `
   <header class="topbar">
     <img src="assets/logo.png" alt="Lifespan Learning Institute">
-    <div class="meta">Course Evaluation<br>Page ${page + 1} of ${PAGES.length}</div>
+    <div class="meta">
+      Course Evaluation · Page ${page + 1} of ${PAGES.length}<br>
+      <button type="button" class="text-link" data-action="certificate">View certificate</button>
+    </div>
   </header>
   <main id="main">
     ${steps()}
@@ -304,20 +317,147 @@ const pageIdentity = () => `
     <button type="submit" class="btn primary" data-nav="finish">Finish</button>
   </div>`;
 
-const pageDone = () => `
+const pageCertificate = () => {
+  const name = participantName();
+  const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  return `
   <header class="topbar">
     <img src="assets/logo.png" alt="Lifespan Learning Institute">
+    <div class="meta">Certificate preview<br>Knowledge check skipped · treated as 80%+ passed</div>
   </header>
-  <main id="main">
-    <section class="panel success">
-      <h1>Evaluation submitted</h1>
-      <p>Thank you. Your course evaluation for <strong>${esc(COURSE)}</strong> has been recorded for this preview.</p>
-      <p class="muted">Your identity details are kept separate from rating responses in the live workflow.</p>
-      <div class="actions" style="justify-content:center;margin-top:24px">
-        <button type="button" class="btn primary" data-action="restart">Start another evaluation</button>
+  <main id="main" class="cert-main">
+    <div class="note">
+      Staging preview: the quiz/knowledge-check step is skipped. Your sample certificate is shown as if you scored at least 80%.
+    </div>
+    <section class="panel">
+      <span class="page-label">Completed</span>
+      <h2 style="margin-top:8px">${esc(COURSE)}</h2>
+      <p class="muted">Instructor: ${esc(INSTRUCTORS)}</p>
+      <p class="muted">Completed ${esc(date)} · ${CE_HOURS} CE Hours · Certificate No. ${esc(certNumber)}</p>
+    </section>
+    <section class="panel certificate-panel">
+      <h2 class="center">Certificate of Completion</h2>
+      <canvas id="certificate" class="certificate-canvas" width="1666" height="1162" role="img" aria-label="Sample certificate of completion for ${esc(name)}"></canvas>
+      <div class="actions certificate-actions">
+        <button type="button" class="btn primary" data-action="download">↓ Download Certificate</button>
+        <button type="button" class="btn outline" data-action="print">Print Certificate</button>
+        <button type="button" class="btn outline" data-action="back-form">Back to evaluation</button>
       </div>
+      <p class="center muted" style="margin-top:14px;font-size:13px">Staging sample — not valid for continuing education credit.</p>
+    </section>
+    <section class="panel">
+      <h2>Certificate Details</h2>
+      <div class="detail-row"><span>Student Name</span><span>${esc(name)}</span></div>
+      <div class="detail-row"><span>Program</span><span>${esc(COURSE)}</span></div>
+      <div class="detail-row"><span>Instructor</span><span>${esc(INSTRUCTORS)}</span></div>
+      <div class="detail-row"><span>CE Hours</span><span>${CE_HOURS}</span></div>
+      <div class="detail-row"><span>Completion Date</span><span>${esc(date)}</span></div>
+      <div class="detail-row"><span>Certificate Number</span><span>${esc(certNumber)}</span></div>
     </section>
   </main>`;
+};
+
+async function drawCertificate() {
+  const canvas = $('#certificate');
+  if (!canvas) return;
+  certificateReady = false;
+  const artwork = new Image();
+  artwork.src = 'assets/certificate-green.png';
+  try {
+    await artwork.decode();
+    if (document.fonts?.ready) await document.fonts.ready;
+  } catch {
+    toast('Certificate artwork could not load. Please reload and try again.');
+    return;
+  }
+  if ($('#certificate') !== canvas) return;
+
+  canvas.width = 1666;
+  canvas.height = 1162;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(artwork, 0, 0, 1666, 1162);
+  ctx.textAlign = 'center';
+  const bg = ctx.getImageData(200, 200, 1, 1).data;
+
+  const write = (t, y, size = 28, color = '#202d25', font = 'Georgia') => {
+    ctx.fillStyle = color;
+    ctx.font = `${size}px ${font}`;
+    ctx.fillText(t, 833, y, 1245);
+  };
+  const blank = (x, y, w, h) => {
+    ctx.fillStyle = `rgb(${bg[0]},${bg[1]},${bg[2]})`;
+    ctx.fillRect(x, y, w, h);
+  };
+  const wrap = (t, y, size = 26, width = 1200, line = 34, color = '#202d25', font = 'Georgia') => {
+    ctx.font = `${size}px ${font}`;
+    ctx.fillStyle = color;
+    let current = '';
+    for (const word of t.split(' ')) {
+      const next = current + word + ' ';
+      if (ctx.measureText(next).width > width && current) {
+        ctx.fillText(current.trim(), 833, y);
+        y += line;
+        current = word + ' ';
+      } else current = next;
+    }
+    if (current) ctx.fillText(current.trim(), 833, y);
+    return y;
+  };
+
+  const name = participantName();
+  const date = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  blank(205, 276, 1255, 112);
+  write(name, 340, 46);
+  blank(205, 410, 1255, 113);
+  const y = wrap(COURSE, 449, 30, 1245, 36, '#63a63b');
+  wrap(INSTRUCTORS, y + 40, 24, 1245, 30, '#63a63b');
+  blank(210, 718, 1248, 84);
+  wrap(`This course meets the qualifications for ${CE_HOURS} hours of continuing education credit for LMFTs, LCSWs, LPCCs, and/or LEPs as required by the California Board of Behavioral Sciences.`, 750, 23, 1235, 31, '#171d18', 'Georgia');
+  blank(295, 930, 290, 55);
+  ctx.font = '29px Georgia';
+  ctx.fillStyle = '#171d18';
+  ctx.fillText(date, 415, 969, 290);
+  write('STAGING SAMPLE — NOT VALID FOR CE CREDIT · ' + certNumber, 1147, 14, '#795938', 'Inter');
+  certificateReady = true;
+}
+
+function downloadPdf(canvas, name) {
+  const bytes = Uint8Array.from(atob(canvas.toDataURL('image/jpeg', 0.95).split(',')[1]), (c) => c.charCodeAt(0));
+  const enc = new TextEncoder();
+  const parts = [];
+  const offsets = [0];
+  let size = 0;
+  const add = (s) => {
+    const b = typeof s === 'string' ? enc.encode(s) : s;
+    parts.push(b);
+    size += b.length;
+  };
+  const obj = (n, s) => {
+    offsets[n] = size;
+    add(`${n} 0 obj\n${s}\nendobj\n`);
+  };
+  add('%PDF-1.4\n');
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  obj(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 587] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>');
+  offsets[4] = size;
+  add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`);
+  add(bytes);
+  add('\nendstream\nendobj\n');
+  const stream = 'q\n842 0 0 587 0 0 cm\n/Im0 Do\nQ\n';
+  obj(5, `<< /Length ${enc.encode(stream).length} >>\nstream\n${stream}endstream`);
+  const xref = size;
+  add('xref\n0 6\n0000000000 65535 f \n');
+  for (let i = 1; i < 6; i++) add(String(offsets[i]).padStart(10, '0') + ' 00000 n \n');
+  add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(parts, { type: 'application/pdf' }));
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('Certificate PDF downloaded.');
+}
 
 const readForm = (form) => {
   const data = new FormData(form);
@@ -348,13 +488,22 @@ const validateCurrent = (form) => {
 };
 
 const render = () => {
-  if (submitted) {
-    $('#app').innerHTML = pageDone();
+  if (view === 'certificate') {
+    $('#app').innerHTML = pageCertificate();
+    window.scrollTo(0, 0);
+    drawCertificate().catch(() => {});
     return;
   }
   const bodies = [pageLearning, pageObjectives, pageEnvironment, pageFeedback, pageIdentity];
   $('#app').innerHTML = shell(bodies[page]());
   window.scrollTo(0, 0);
+};
+
+const openCertificate = () => {
+  view = 'certificate';
+  persist();
+  toast('Certificate ready (quiz skipped)');
+  render();
 };
 
 document.addEventListener('submit', (e) => {
@@ -366,10 +515,8 @@ document.addEventListener('submit', (e) => {
 
   const nav = e.submitter?.dataset?.nav || 'next';
   if (nav === 'finish') {
-    submitted = true;
-    persist();
-    toast('Evaluation submitted');
-    render();
+    // Skip knowledge-check questions; treat as 80%+ and show certificate.
+    openCertificate();
     return;
   }
   page = Math.min(page + 1, PAGES.length - 1);
@@ -385,7 +532,8 @@ document.addEventListener('click', (e) => {
     if (confirm('Cancel and clear this evaluation?')) {
       answers = defaultAnswers();
       page = 0;
-      submitted = false;
+      view = 'form';
+      certNumber = 'LLI-2026-' + String(Date.now()).slice(-6);
       persist();
       toast('Evaluation cleared');
       render();
@@ -393,12 +541,36 @@ document.addEventListener('click', (e) => {
     return;
   }
 
-  if (btn.dataset.action === 'restart') {
-    answers = defaultAnswers();
-    page = 0;
-    submitted = false;
+  if (btn.dataset.action === 'certificate') {
+    const form = $('#eval-form');
+    if (form) answers = readForm(form);
+    openCertificate();
+    return;
+  }
+
+  if (btn.dataset.action === 'back-form') {
+    view = 'form';
     persist();
     render();
+    return;
+  }
+
+  if (btn.dataset.action === 'download') {
+    const canvas = $('#certificate');
+    if (!canvas || !certificateReady) {
+      toast('Certificate is still loading.');
+      return;
+    }
+    downloadPdf(canvas, `Lifespan-Certificate-${participantName().replace(/\s+/g, '-')}.pdf`);
+    return;
+  }
+
+  if (btn.dataset.action === 'print') {
+    if (!certificateReady) {
+      toast('Certificate is still loading.');
+      return;
+    }
+    window.print();
     return;
   }
 
