@@ -216,6 +216,17 @@ legend{font-weight:600;padding:0;margin-bottom:12px}
 #toast.show{display:block}
 .skip{position:fixed;left:8px;top:-60px;background:white;padding:12px;z-index:200}
 .skip:focus{top:8px}
+@media(max-width:760px){
+  .form-only .topbar{padding:14px 16px;flex-wrap:wrap}
+  .form-only .topbar .meta{margin-left:0;text-align:left;width:100%}
+  .form-only main{padding:18px 14px 56px}
+  .panel{padding:18px}
+  .three{grid-template-columns:1fr}
+  .choice{padding:8px 10px}
+  h1{font-size:24px}
+  .detail-row{flex-direction:column;gap:5px}
+  .detail-row span:last-child{text-align:left;max-width:100%}
+}
 @media print{
   body{background:white}
   .topbar,.note,.certificate-actions,.skip,#toast{display:none!important}
