@@ -11,43 +11,11 @@ const INSTRUCTORS = 'Pat Ogden, PhD and Bonnie Goldstein, PhD';
 const CE_HOURS = 6;
 
 const LIKERT = [
-  { value: '1', label: '1 ★ Strongly Disagree' },
-  { value: '2', label: '2 ★ Disagree' },
-  { value: '3', label: '3 ★ Neutral' },
-  { value: '4', label: '4 ★ Agree' },
-  { value: '5', label: '5 ★ Strongly Agree' }
-];
-
-const LEARN_SCALE = [
-  { value: '1', label: '1 very little' },
-  { value: '2', label: '2' },
-  { value: '3', label: '3 some' },
-  { value: '4', label: '4' },
-  { value: '5', label: '5 Great deal' }
-];
-
-const USEFUL_SCALE = [
-  { value: '1', label: '1 not useful' },
-  { value: '2', label: '2' },
-  { value: '3', label: '3 Moderately Useful' },
-  { value: '4', label: '4' },
-  { value: '5', label: '5 Extremely Useful' }
-];
-
-const RECOMMEND_SCALE = [
-  { value: '1', label: '1 No' },
-  { value: '2', label: '2' },
-  { value: '3', label: '3 Maybe' },
-  { value: '4', label: '4' },
-  { value: '5', label: '5 yes' }
-];
-
-const CONFIDENCE_SCALE = [
-  { value: '0', label: '0%' },
-  { value: '25', label: '25%' },
-  { value: '50', label: '50%' },
-  { value: '75', label: '75%' },
-  { value: '100', label: '100%' }
+  { value: '1', number: '1', label: 'Strongly disagree' },
+  { value: '2', number: '2', label: 'Disagree' },
+  { value: '3', number: '3', label: 'Neutral' },
+  { value: '4', number: '4', label: 'Agree' },
+  { value: '5', number: '5', label: 'Strongly agree' }
 ];
 
 const PRESENTER_ITEMS = [
@@ -145,14 +113,15 @@ const toast = (msg) => {
   toast._t = setTimeout(() => el.classList.remove('show'), 2800);
 };
 
-const likertField = (name, text, value, scale = LIKERT) => `
-  <fieldset class="question">
+const likertField = (name, text, value) => `
+  <fieldset class="question rating-question">
     <legend>${esc(text)}</legend>
-    <div class="choices">
-      ${scale.map((opt) => `
-        <label class="choice">
+    <div class="star-scale">
+      ${LIKERT.map((opt) => `
+        <label class="star-choice">
           <input type="radio" name="${esc(name)}" value="${esc(opt.value)}" ${value === opt.value ? 'checked' : ''} required>
-          <span>${esc(opt.label)}</span>
+          <span class="rating-label"><strong>${esc(opt.number)}</strong>${esc(opt.label)}</span>
+          <span class="star" aria-hidden="true">★</span>
         </label>`).join('')}
     </div>
   </fieldset>`;
@@ -176,22 +145,31 @@ const emailInput = (name, label, value) => `
   </div>`;
 
 const steps = () => `
-  <div class="steps" aria-label="Evaluation progress">
-    ${PAGES.map((p, i) => `<span class="step ${i === page ? 'active' : ''} ${i < page ? 'done' : ''}">${esc(p.label)}</span>`).join('')}
+  <div class="progress-wrap">
+    <div class="progress-copy"><span>Evaluation progress</span><strong>${page + 1} of ${PAGES.length}</strong></div>
+    <div class="progress-track"><span style="width:${((page + 1) / PAGES.length) * 100}%"></span></div>
+    <div class="steps" aria-label="Evaluation progress">
+      ${PAGES.map((p, i) => `<span class="step ${i === page ? 'active' : ''} ${i < page ? 'done' : ''}"><i>${i < page ? '✓' : i + 1}</i><span>${esc(p.label.replace(/^\d+\.\s*/, ''))}</span></span>`).join('')}
+    </div>
   </div>`;
 
 const shell = (body) => `
   <header class="topbar">
-    <img src="assets/logo.png" alt="Lifespan Learning Institute">
-    <div class="meta">
-      Course Evaluation · Page ${page + 1} of ${PAGES.length}<br>
-      <button type="button" class="text-link" data-action="certificate">View certificate</button>
+    <div class="topbar-inner">
+      <img src="assets/logo.png" alt="Lifespan Learning Institute">
+      <div class="meta">
+        <span>Course evaluation</span>
+        <button type="button" class="text-link" data-action="certificate">Preview certificate</button>
+      </div>
     </div>
   </header>
   <main id="main">
     ${steps()}
-    <p class="page-label">${esc(PAGES[page].label)}</p>
-    <p class="course-title">${esc(COURSE)}</p>
+    <section class="course-intro">
+      <p class="eyebrow">Continuing education evaluation</p>
+      <h1>${esc(COURSE)}</h1>
+      <p>Your feedback helps us improve future learning experiences. All rating questions use the same five-point scale.</p>
+    </section>
     <form id="eval-form" novalidate>${body}</form>
   </main>`;
 
@@ -201,16 +179,16 @@ const pageLearning = () => `
       <h2>Learning</h2>
       <p>Please indicate your agreement with the following statements.</p>
     </div>
-    <div class="scale-legend">1 ★ = Strongly Disagree &nbsp;·&nbsp; 2 ★ = Disagree &nbsp;·&nbsp; 3 ★ = Neutral &nbsp;·&nbsp; 4 ★ = Agree &nbsp;·&nbsp; 5 ★ = Strongly Agree</div>
+    <p class="rating-help"><span aria-hidden="true">★</span> Select one response for each statement.</p>
     ${likertField('applyKnowledge', 'I will apply the knowledge/skills I learned', answers.applyKnowledge)}
     ${likertField('fulfilledNeeds', 'This program fulfilled my educational needs', answers.fulfilledNeeds)}
     ${likertField('activityFormat', 'Activity format enhanced achievement of learning objectives', answers.activityFormat)}
     ${likertField('professionalEffectiveness', 'This program improved my professional effectiveness and expertise', answers.professionalEffectiveness)}
     ${likertField('culturalDifferences', 'Cultural, racial, ethnic, socioeconomic, and gender differences were considered.', answers.culturalDifferences)}
-    ${likertField('howMuchLearned', 'How much did you learn in this program?', answers.howMuchLearned, LEARN_SCALE)}
-    ${likertField('howUseful', 'How useful was the content of this CE program for your practice or other professional development?', answers.howUseful, USEFUL_SCALE)}
-    ${likertField('recommend', 'Would you recommend this program to others?', answers.recommend, RECOMMEND_SCALE)}
-    ${likertField('confidence', 'What degree of confidence do you have that you will apply your “new” learning in your practice:', answers.confidence, CONFIDENCE_SCALE)}
+    ${likertField('howMuchLearned', 'I learned a great deal in this program.', answers.howMuchLearned)}
+    ${likertField('howUseful', 'The content of this CE program was useful for my practice or professional development.', answers.howUseful)}
+    ${likertField('recommend', 'I would recommend this program to others.', answers.recommend)}
+    ${likertField('confidence', 'I am confident that I will apply my new learning in my practice.', answers.confidence)}
   </section>
   <div class="actions between">
     <button type="button" class="btn outline" data-action="cancel">Cancel</button>
@@ -219,7 +197,6 @@ const pageLearning = () => `
 
 const presenterBlock = (key, name) => `
   <h3 class="section-title">${esc(name)}</h3>
-  <div class="scale-legend">1 ★ = Strongly Disagree &nbsp;·&nbsp; 2 ★ = Disagree &nbsp;·&nbsp; 3 ★ = Neutral &nbsp;·&nbsp; 4 ★ = Agree &nbsp;·&nbsp; 5 ★ = Strongly Agree</div>
   ${PRESENTER_ITEMS.map((text, i) => likertField(`${key}.q${i}`, text, answers[key][`q${i}`])).join('')}`;
 
 const pageObjectives = () => `
@@ -228,7 +205,7 @@ const pageObjectives = () => `
       <h2>Learning Objectives</h2>
       <p>After attending this activity I am able to:</p>
     </div>
-    <div class="scale-legend">1 ★ = Strongly Disagree &nbsp;·&nbsp; 2 ★ = Disagree &nbsp;·&nbsp; 3 ★ = Neutral &nbsp;·&nbsp; 4 ★ = Agree &nbsp;·&nbsp; 5 ★ = Strongly Agree</div>
+    <p class="rating-help"><span aria-hidden="true">★</span> Select one response for each statement.</p>
     ${likertField('obj1', 'Determine three bodily cues that can indicate hopelessness, helplessness and despair in session.', answers.obj1)}
     ${likertField('obj2', 'Assess the role of the body in generating and maintaining depression in psychotherapy with adults, children and adolescents in clinical settings.', answers.obj2)}
     ${likertField('obj3', 'Analyze the efficacy of working with the body to improve clinical outcome in treatment of suicidal adults, children and adolescents.', answers.obj3)}
@@ -249,7 +226,7 @@ const pageEnvironment = () => `
       <p>After attending this activity I am able to:</p>
     </div>
     <h3 class="section-title">Environment</h3>
-    <div class="scale-legend">1 ★ = Strongly Disagree &nbsp;·&nbsp; 2 ★ = Disagree &nbsp;·&nbsp; 3 ★ = Neutral &nbsp;·&nbsp; 4 ★ = Agree &nbsp;·&nbsp; 5 ★ = Strongly Agree</div>
+    <p class="rating-help"><span aria-hidden="true">★</span> Select one response for each statement.</p>
     ${likertField('envDigital', 'The digital materials were conducive to my learning', answers.envDigital)}
     ${likertField('envInterface', 'The web interface was reasonably convenient and accessible', answers.envInterface)}
     ${likertField('envInstructions', 'Instructions to access materials were clear', answers.envInstructions)}
@@ -322,8 +299,10 @@ const pageCertificate = () => {
   const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
   return `
   <header class="topbar">
-    <img src="assets/logo.png" alt="Lifespan Learning Institute">
-    <div class="meta">Certificate preview<br>Knowledge check skipped · treated as 80%+ passed</div>
+    <div class="topbar-inner">
+      <img src="assets/logo.png" alt="Lifespan Learning Institute">
+      <div class="meta"><span>Certificate preview</span>80%+ completion achieved</div>
+    </div>
   </header>
   <main id="main" class="cert-main">
     <div class="note">
@@ -372,12 +351,23 @@ async function drawCertificate() {
   }
   if ($('#certificate') !== canvas) return;
 
-  canvas.width = 1666;
-  canvas.height = 1162;
+  const logicalWidth = 1666;
+  const logicalHeight = 1162;
+  const renderScale = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
+  canvas.width = Math.round(logicalWidth * renderScale);
+  canvas.height = Math.round(logicalHeight * renderScale);
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(artwork, 0, 0, 1666, 1162);
+  ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(artwork, 0, 0, logicalWidth, logicalHeight);
   ctx.textAlign = 'center';
-  const bg = ctx.getImageData(200, 200, 1, 1).data;
+  const bg = ctx.getImageData(
+    Math.round(200 * renderScale),
+    Math.round(200 * renderScale),
+    1,
+    1
+  ).data;
 
   const write = (t, y, size = 28, color = '#202d25', font = 'Georgia') => {
     ctx.fillStyle = color;
