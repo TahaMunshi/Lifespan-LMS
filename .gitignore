@@ -7,6 +7,11 @@ _site_fetch/
 _extract.py
 __pycache__/
 
+# Client reference documents (local only)
+Sample Evaluation form*.pdf
+Summary * EVAL.pdf
+Lifespan Learning Institute _ Notes by Aqib.docx
+
 # OS / editor
 .DS_Store
 Thumbs.db
