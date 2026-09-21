@@ -68,6 +68,49 @@ function wizardPrevStep(currentStep, activityType) {
   return Math.max(currentStep - 1, 1);
 }
 
+function activityPreset(data, activityType = 'live') {
+  const version = data.versions.find((item) => item.activityType === activityType) || data.versions[0];
+  const course = byId(data.courses, version?.courseId) || data.courses[0];
+  const cohort = data.cohorts.find((item) => item.versionId === version?.id) || data.cohorts[0];
+  const module = data.modules.find((item) => item.cohortId === cohort?.id) || data.modules[0];
+  const sample = data.publications.find((item) => item.activityType === activityType)
+    || data.publications.find((item) => item.courseId === course?.id)
+    || data.publications[0];
+  const objectives = (sample?.objectives || []).filter(Boolean).slice(0, 4);
+  while (objectives.length < 4) {
+    objectives.push(`Learning goal ${objectives.length + 1}`);
+  }
+  const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
+  const endDate = module?.endDate || '2027-12-31';
+  return {
+    courseId: course?.id || data.courses[0].id,
+    versionId: version?.id || data.versions[0].id,
+    cohortId: cohort?.id || data.cohorts[0].id,
+    moduleId: module?.id || data.modules[0].id,
+    evaluationTemplateId: data.templates.evaluations[0].id,
+    testTemplateId: requiresTest ? (data.templates.tests[0]?.id || null) : null,
+    certificateTemplateId: ACTIVITY_TYPES[activityType]?.certificateTemplate || 'cert-live-v1',
+    activityType,
+    deadline: sample?.deadline || endDate,
+    location: cohort?.location || '',
+    creditHours: module?.creditHours ?? 6,
+    startDate: module?.startDate || '',
+    endDate,
+    presenters: (cohort?.presenters || []).join('\n'),
+    objectives
+  };
+}
+
+function applyActivityTypePreset(draft, data, activityType) {
+  const preset = activityPreset(data, activityType);
+  return {
+    ...draft,
+    ...preset,
+    activityType,
+    objectives: Array.isArray(preset.objectives) ? preset.objectives.join('\n') : preset.objectives
+  };
+}
+
 function testAnswers(pubId, preview) {
   if (preview) {
     const session = previewSession(pubId);
@@ -252,27 +295,54 @@ function adminActivityEditor(id, stepParam) {
   const data = state();
   const draftKey = id === 'new' ? 'new' : id;
   const existing = id && id !== 'new' ? data.publications.find((item) => item.id === id) : null;
-  const defaults = {
-    id: existing?.id || '',
-    slug: existing?.slug || '',
-    status: existing?.status || 'draft',
-    courseId: existing?.courseId || data.courses[0].id,
-    versionId: existing?.versionId || data.versions[0].id,
-    cohortId: existing?.cohortId || data.cohorts[0].id,
-    moduleId: existing?.moduleId || data.modules[0].id,
-    evaluationTemplateId: existing?.evaluationTemplateId || data.templates.evaluations[0].id,
-    testTemplateId: existing?.testTemplateId || null,
-    certificateTemplateId: existing?.certificateTemplateId || 'cert-live-v1',
-    activityType: existing?.activityType || 'live',
-    deadline: existing?.deadline || '2027-12-31',
-    objectives: existing?.objectives || ['', '', '', '']
+  let draft = loadWizardDraft(draftKey);
+  if (!existing && !Object.keys(draft).length) {
+    draft = applyActivityTypePreset({}, data, 'live');
+    saveWizardDraft(draftKey, draft);
+  }
+  const presetType = draft.activityType || existing?.activityType || 'live';
+  const preset = activityPreset(data, presetType);
+  const defaults = existing ? {
+    id: existing.id,
+    slug: existing.slug,
+    status: existing.status,
+    courseId: existing.courseId,
+    versionId: existing.versionId,
+    cohortId: existing.cohortId,
+    moduleId: existing.moduleId,
+    evaluationTemplateId: existing.evaluationTemplateId,
+    testTemplateId: existing.testTemplateId,
+    certificateTemplateId: existing.certificateTemplateId,
+    activityType: existing.activityType,
+    deadline: existing.deadline,
+    objectives: existing.objectives,
+    location: existing.location,
+    creditHours: existing.creditHours,
+    startDate: existing.startDate,
+    endDate: existing.endDate,
+    presenters: (existing.presenters || []).join('\n')
+  } : {
+    id: '',
+    slug: '',
+    status: 'draft',
+    ...preset,
+    presenters: preset.presenters
   };
-  const draft = loadWizardDraft(draftKey);
   const merged = { ...defaults, ...draft };
   if (typeof merged.objectives === 'string') {
-    merged.objectives = merged.objectives.split('\n');
+    merged.objectives = merged.objectives.split('\n').map((item) => item.trim()).filter(Boolean);
   }
-  const publication = { ...defaults, ...merged, objectives: Array.isArray(merged.objectives) ? merged.objectives : defaults.objectives };
+  if (!Array.isArray(merged.objectives) || merged.objectives.filter(Boolean).length < 4) {
+    merged.objectives = preset.objectives;
+  }
+  const publication = {
+    ...defaults,
+    ...merged,
+    objectives: Array.isArray(merged.objectives) ? merged.objectives.filter(Boolean) : preset.objectives
+  };
+  if (ACTIVITY_TYPES[publication.activityType]?.requiresTest && !publication.testTemplateId) {
+    publication.testTemplateId = data.templates.tests[0]?.id || null;
+  }
   const resolved = activityContext(data, publication);
   const step = Math.min(Math.max(Number(stepParam) || 1, 1), 6);
   const requiresTest = ACTIVITY_TYPES[publication.activityType]?.requiresTest;
@@ -299,13 +369,14 @@ function adminActivityEditor(id, stepParam) {
     return adminShell('Activity saved', 'Your changes have been saved as a new version.', content, 'activities');
   }
 
-  const objectivesText = (Array.isArray(publication.objectives) ? publication.objectives : defaults.objectives).join('\n');
+  const objectivesText = (publication.objectives || preset.objectives).join('\n');
   const presentersText = draft.presenters
+    || defaults.presenters
     || (resolved?.cohort?.presenters || []).join('\n');
-  const locationValue = draft.location ?? resolved?.cohort?.location ?? '';
-  const creditHoursValue = draft.creditHours ?? resolved?.module?.creditHours ?? '';
-  const startDateValue = draft.startDate ?? resolved?.module?.startDate ?? '';
-  const endDateValue = draft.endDate ?? resolved?.module?.endDate ?? '';
+  const locationValue = draft.location ?? defaults.location ?? resolved?.cohort?.location ?? '';
+  const creditHoursValue = draft.creditHours ?? defaults.creditHours ?? resolved?.module?.creditHours ?? '';
+  const startDateValue = draft.startDate ?? defaults.startDate ?? resolved?.module?.startDate ?? '';
+  const endDateValue = draft.endDate ?? defaults.endDate ?? resolved?.module?.endDate ?? '';
   const certTemplate = ACTIVITY_TYPES[publication.activityType]?.certificateTemplate || publication.certificateTemplateId;
 
   const hiddenFields = (currentStep) => {
@@ -364,7 +435,7 @@ function adminActivityEditor(id, stepParam) {
   const step2 = `
     <section class="wizard-page" data-wizard-step="2">
       <h2>Which course, class group, and module?</h2>
-      <p>Connect this activity to the right course structure.</p>
+      <p>These are filled in for you. Change them only if you need something different.</p>
       <div class="form-grid two">
         <label>Course<select name="courseId">${selectOptions(data.courses, publication.courseId, (item) => item.name)}</select></label>
         <label>Version<select name="versionId">${selectOptions(data.versions, publication.versionId, (item) => `${byId(data.courses, item.courseId)?.name} — ${item.name}`)}</select></label>
@@ -376,7 +447,7 @@ function adminActivityEditor(id, stepParam) {
   const step3 = `
     <section class="wizard-page" data-wizard-step="3">
       <h2>Dates, place, and presenters</h2>
-      <p>When and where will this activity take place?</p>
+      <p>Already filled from the class group. Adjust only if needed.</p>
       <div class="form-grid two">
         <label>Activity location<input name="location" value="${escapeHtml(locationValue)}" required></label>
         <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
@@ -390,7 +461,7 @@ function adminActivityEditor(id, stepParam) {
   const step4 = `
     <section class="wizard-page" data-wizard-step="4">
       <h2>Learning goals and evaluation</h2>
-      <p>Enter at least four learning goals. One per line.</p>
+      <p>Four learning goals are ready. Keep at least four lines — one goal per line.</p>
       <label>Learning goals<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
       <label>Evaluation template<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} · v${item.version}`)}</select></label>
       <input type="hidden" name="certificateTemplateId" value="${escapeHtml(certTemplate)}">
@@ -400,7 +471,7 @@ function adminActivityEditor(id, stepParam) {
   const step5 = requiresTest ? `
     <section class="wizard-page" data-wizard-step="5">
       <h2>Knowledge check template</h2>
-      <p>Select the test learners must pass to earn their certificate.</p>
+      <p>The standard knowledge check is selected for you.</p>
       <label>Test template<select name="testTemplateId" required>${selectOptions(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id, (item) => `${item.name} · ${item.passPercent}% to pass`)}</select></label>
     </section>` : `
     <section class="wizard-page" data-wizard-step="5">
@@ -916,12 +987,16 @@ function collectEvaluation(form) {
 
 function submitActivityForm(form) {
   const data = new FormData(form);
-  const activityType = data.get('activityType');
+  const activityType = data.get('activityType') || 'live';
   const course = byId(state().courses, data.get('courseId'));
   const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
   const draft = loadWizardDraft(draftKey);
-  for (const [key, value] of data.entries()) draft[key] = value;
-  const mergedData = { ...Object.fromEntries(data), ...draft };
+  const mergedData = { ...draft, ...Object.fromEntries(data) };
+  const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
+  let objectives = String(mergedData.objectives || '').split('\n').map((item) => item.trim()).filter(Boolean);
+  if (objectives.length < 4) {
+    objectives = activityPreset(state(), activityType).objectives;
+  }
   const result = store.savePublication({
     id: form.dataset.id || undefined,
     courseId: mergedData.courseId,
@@ -934,14 +1009,14 @@ function submitActivityForm(form) {
     creditHours: Number(mergedData.creditHours),
     startDate: mergedData.startDate,
     endDate: mergedData.endDate,
-    presenters: String(mergedData.presenters).split('\n').map((item) => item.trim()).filter(Boolean),
-    evaluationTemplateId: mergedData.evaluationTemplateId,
-    testTemplateId: ACTIVITY_TYPES[activityType].requiresTest ? (mergedData.testTemplateId || state().templates.tests[0].id) : null,
+    presenters: String(mergedData.presenters || '').split('\n').map((item) => item.trim()).filter(Boolean),
+    evaluationTemplateId: mergedData.evaluationTemplateId || state().templates.evaluations[0].id,
+    testTemplateId: requiresTest ? (mergedData.testTemplateId || state().templates.tests[0].id) : null,
     certificateTemplateId: ACTIVITY_TYPES[activityType].certificateTemplate,
     slug: form.dataset.id
       ? (byId(state().publications, form.dataset.id)?.slug || safeSlug(course?.name || 'activity'))
       : safeSlug(course?.name || 'activity'),
-    objectives: String(mergedData.objectives).split('\n').map((item) => item.trim()).filter(Boolean),
+    objectives,
     status: form.dataset.id ? byId(state().publications, form.dataset.id)?.status : 'draft'
   });
   if (!result.ok) {
@@ -1112,11 +1187,20 @@ document.addEventListener('click', async (event) => {
     if (action === 'wizard-next' && !form.reportValidity()) return;
     const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
     const draft = loadWizardDraft(draftKey);
+    const previousType = draft.activityType;
     const formData = new FormData(form);
     for (const [key, value] of formData.entries()) draft[key] = value;
-    saveWizardDraft(draftKey, draft);
-    const activityType = draft.activityType || formData.get('activityType') || 'live';
+    const activityType = formData.get('activityType') || draft.activityType || 'live';
     const currentStep = Number(form.dataset.step);
+    const typeChanged = currentStep === 1 && previousType !== activityType;
+    const nextDraft = (typeChanged || !previousType)
+      ? applyActivityTypePreset(draft, state(), activityType)
+      : { ...draft, activityType };
+    if (ACTIVITY_TYPES[activityType]?.requiresTest && !nextDraft.testTemplateId) {
+      nextDraft.testTemplateId = state().templates.tests[0]?.id || '';
+    }
+    if (!ACTIVITY_TYPES[activityType]?.requiresTest) nextDraft.testTemplateId = '';
+    saveWizardDraft(draftKey, nextDraft);
     let targetStep = currentStep;
     if (action === 'wizard-next') targetStep = wizardNextStep(currentStep, activityType);
     else if (action === 'wizard-prev') targetStep = wizardPrevStep(currentStep, activityType);

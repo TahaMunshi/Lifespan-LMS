@@ -59,7 +59,9 @@ export function validatePublication(state, publication) {
     if (!test) errors.push('Select a test template.');
     if (test && test.questions.length < 12) errors.push('Home Study and Hybrid tests require at least 12 questions.');
     if (test) {
-      const uncovered = (publication.objectives || []).filter((_, objectiveIndex) => (
+      const objectives = (publication.objectives || []).filter(Boolean);
+      const coveredSlots = Math.max(0, ...test.questions.map((question) => Number(question.objectiveIndex))) + 1;
+      const uncovered = objectives.slice(0, coveredSlots).filter((_, objectiveIndex) => (
         test.questions.filter((question) => Number(question.objectiveIndex) === objectiveIndex).length < 3
       ));
       if (uncovered.length) errors.push('Tests require at least three questions for every learning objective.');
