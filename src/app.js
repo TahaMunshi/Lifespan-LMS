@@ -434,7 +434,7 @@ function adminActivityEditor(id, stepParam) {
   const currentPage = steps[step - 1];
 
   const content = `
-    <form id="activity-form" class="editor-layout wizard-layout" data-id="${escapeHtml(publication.id)}" data-step="${step}" data-draft-key="${escapeHtml(draftKey)}">
+    <form id="activity-form" class="wizard-layout" data-id="${escapeHtml(publication.id)}" data-step="${step}" data-draft-key="${escapeHtml(draftKey)}">
       <div class="named-steps wizard-steps">
         ${stepLabels.map((label, index) => {
           const stepNum = index + 1;
@@ -443,11 +443,13 @@ function adminActivityEditor(id, stepParam) {
           return `<button type="button" class="${stateClass}${skipped && step > 5 ? ' done' : ''}" data-action="wizard-goto" data-step="${stepNum}" ${skipped ? 'aria-label="Skipped for Live activities"' : ''}>${escapeHtml(label)}</button>`;
         }).join('')}
       </div>
-      ${hiddenFields(step)}
-      ${currentPage}
-      <div class="form-navigation wizard-nav">
-        ${step > 1 ? `<button type="button" class="btn ghost" data-action="wizard-prev">Previous</button>` : routeLink('admin/activities', 'Cancel', 'btn ghost')}
-        ${step < 6 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : ''}
+      <div class="wizard-hidden" hidden>${hiddenFields(step)}</div>
+      <div class="wizard-panel">
+        ${currentPage}
+        <div class="form-navigation wizard-nav">
+          ${step > 1 ? `<button type="button" class="btn ghost" data-action="wizard-prev">Previous</button>` : routeLink('admin/activities', 'Cancel', 'btn ghost')}
+          ${step < 6 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : ''}
+        </div>
       </div>
     </form>`;
 
