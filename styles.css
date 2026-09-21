@@ -184,7 +184,7 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .star-scale{
   display:grid;
   grid-template-columns:repeat(5,minmax(0,1fr));
-  gap:12px;
+  gap:10px;
   position:relative;
 }
 .star-choice{
@@ -194,16 +194,16 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
   align-items:center;
   gap:10px;
   margin:0;
-  padding:14px 8px 16px;
-  border:2px solid var(--line);
+  padding:12px 6px 14px;
+  border:1px solid transparent;
   border-radius:14px;
   cursor:pointer;
   text-align:center;
-  background:#fff;
+  background:transparent;
   min-height:120px;
   transition:background .18s ease,border-color .18s ease,transform .18s ease;
 }
-.star-choice:hover{background:#fff9eb;transform:translateY(-2px);border-color:#f0ce83}
+.star-choice:hover{background:#fff9eb;transform:translateY(-2px)}
 .star-choice input{
   position:absolute;
   width:1px;
@@ -212,19 +212,19 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
   pointer-events:none;
 }
 .rating-label{
-  min-height:56px;
+  min-height:52px;
   display:flex;
   flex-direction:column;
   justify-content:flex-end;
   color:var(--muted);
-  font-size:14px;
-  line-height:1.3;
+  font-size:13px;
+  line-height:1.25;
   font-weight:600;
 }
-.rating-label strong{color:var(--navy);font-size:28px;line-height:1.1;margin-bottom:4px}
+.rating-label strong{color:var(--navy);font-size:22px;line-height:1.1;margin-bottom:4px}
 .star{
   color:#cfd8db;
-  font-size:clamp(28px,4vw,40px);
+  font-size:clamp(36px,5vw,52px);
   line-height:1;
   filter:drop-shadow(0 3px 3px rgba(30,62,77,.08));
   transition:color .18s ease,filter .18s ease,transform .18s ease;
@@ -232,8 +232,7 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .star-choice:hover .star{color:#f8cf75}
 .star-choice:has(input:checked){
   background:#fff9e9;
-  border-color:var(--green-dark);
-  box-shadow:0 0 0 3px rgba(99,166,59,.18);
+  border-color:#f0ce83;
 }
 .star-choice:has(input:checked) .star{
   color:var(--gold);
@@ -241,6 +240,19 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
   transform:scale(1.08);
 }
 .star-choice:has(input:focus-visible){outline:3px solid rgba(99,166,59,.35);outline-offset:2px}
+.answer-hint{
+  display:grid;
+  gap:4px;
+  background:var(--green-soft);
+  border:1px solid #d5e7ca;
+  border-left:4px solid var(--green);
+  border-radius:12px;
+  padding:14px 18px;
+  margin:0 0 18px;
+}
+.answer-hint span{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--green-dark)}
+.answer-hint strong{font-size:18px;color:var(--navy)}
+.test-choice.is-correct{border-color:var(--green);background:var(--green-soft)}
 .section-title{
   margin:38px 0 18px;
   padding:14px 18px;

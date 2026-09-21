@@ -784,10 +784,19 @@ function ratingQuestion(name, question, value = '') {
   const scale = typeof question === 'string' || !question.scale
     ? SCALE
     : question.scale.map((label, index) => [String(index + 1), label]);
-  return `<fieldset class="question rating-question"><legend>${escapeHtml(text)}</legend><div class="star-scale">${scale.map(([number, label]) => `<label class="star-choice"><input type="radio" name="${escapeHtml(name)}" value="${number}" ${String(value) === number ? 'checked' : ''} required><span class="rating-label"><strong>${number}</strong>${escapeHtml(label)}</span></label>`).join('')}</div></fieldset>`;
+  const selected = value === '' || value == null ? '5' : String(value);
+  return `<fieldset class="question rating-question"><legend>${escapeHtml(text)}</legend><div class="star-scale">${scale.map(([number, label]) => `<label class="star-choice"><input type="radio" name="${escapeHtml(name)}" value="${number}" ${selected === number ? 'checked' : ''} required><span class="rating-label"><strong>${number}</strong>${escapeHtml(label)}</span><span class="star" aria-hidden="true">★</span></label>`).join('')}</div></fieldset>`;
 }
 
 function evaluationPages(context, draft) {
+  const learnerDefaults = {
+    firstName: 'Margaret',
+    lastName: 'Whitfield',
+    credential: 'LCSW',
+    email: 'margaret.whitfield@example.com',
+    license: 'LCSW-12345',
+    ...(draft.learner || {})
+  };
   const presenterQuestions = context.cohort.presenters.flatMap((presenter, presenterIndex) => [
     `<div class="presenter-heading"><span>${presenterIndex + 1}</span><div><h2>${escapeHtml(presenter)}</h2><p>Rate this presenter using the standard questions.</p></div></div>`,
     ...STANDARD_QUESTIONS.presenter.map((question) => ratingQuestion(`presenter.${presenterIndex}.${question.id}`, question, draft.ratings?.[`presenter.${presenterIndex}.${question.id}`]))
@@ -820,8 +829,8 @@ function evaluationPages(context, draft) {
     },
     {
       title: 'Your information',
-      subtitle: 'Written comments are optional. Certificate fields are required.',
-      body: `<div class="feedback-grid">${STANDARD_QUESTIONS.written.map((question) => `<label>${escapeHtml(question.text)}<textarea name="comment.${question.id}" placeholder="Enter your response (optional)">${escapeHtml(draft.comments?.[question.id] || '')}</textarea></label>`).join('')}</div><div class="subsection-title">Certificate information</div><div class="form-grid two"><label>First name<input name="firstName" value="${escapeHtml(draft.learner?.firstName || '')}" required></label><label>Last name<input name="lastName" value="${escapeHtml(draft.learner?.lastName || '')}" required></label><label>Credential<input name="credential" value="${escapeHtml(draft.learner?.credential || '')}" placeholder="LCSW, PhD, LMFT"></label><label>Email address<input type="email" name="email" value="${escapeHtml(draft.learner?.email || '')}" required></label><label class="span-two">Professional license number<input name="license" value="${escapeHtml(draft.learner?.license || '')}" required></label></div>`
+      subtitle: 'Your details are filled in. Click continue when you are ready.',
+      body: `<div class="feedback-grid">${STANDARD_QUESTIONS.written.map((question) => `<label>${escapeHtml(question.text)}<textarea name="comment.${question.id}" placeholder="Optional">${escapeHtml(draft.comments?.[question.id] || '')}</textarea></label>`).join('')}</div><div class="subsection-title">Certificate information</div><div class="form-grid two"><label>First name<input name="firstName" value="${escapeHtml(learnerDefaults.firstName)}" required></label><label>Last name<input name="lastName" value="${escapeHtml(learnerDefaults.lastName)}" required></label><label>Credential<input name="credential" value="${escapeHtml(learnerDefaults.credential)}" placeholder="LCSW, PhD, LMFT"></label><label>Email address<input type="email" name="email" value="${escapeHtml(learnerDefaults.email)}" required></label><label class="span-two">Professional license number<input name="license" value="${escapeHtml(learnerDefaults.license)}" required></label></div>`
     }
   ];
 }
@@ -838,7 +847,7 @@ function learnerEvaluation(context, pageIndex, preview = false) {
   const prevButton = currentIndex > 0
     ? `<button type="button" class="btn ghost" data-action="eval-prev">Previous</button>`
     : routeLink(preview ? `preview/${context.publication.id}` : `learn/${context.publication.slug}`, 'Back', 'btn ghost');
-  const content = `${namedSteps}${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${currentIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${currentIndex + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div><p class="rating-help">Choose a number from 1 to 5 for each statement.</p>${page.body}</section><div class="form-navigation">${prevButton}<button class="btn primary" type="submit">${currentIndex === pages.length - 1 ? 'Submit evaluation' : 'Save and continue'}</button></div></form>`;
+  const content = `${namedSteps}${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${currentIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${currentIndex + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div>${currentIndex < pages.length - 1 ? '<p class="rating-help"><span aria-hidden="true">★</span> Ratings are pre-selected. Change any star you like, then continue.</p>' : ''}${page.body}</section><div class="form-navigation">${prevButton}<button class="btn primary" type="submit">${currentIndex === pages.length - 1 ? 'Submit evaluation' : 'Continue'}</button></div></form>`;
   return learnerBase(context, content, { preview, label: 'Evaluation' });
 }
 
@@ -846,7 +855,7 @@ function learnerAttendance(context, preview = false) {
   const progress = progressFor(context, preview);
   if (!progress.submission) return learnerLanding(context, preview);
   const learner = progress.submission.learner || {};
-  const content = `<form id="attendance-form" data-id="${context.publication.id}" data-preview="${preview}"><section class="evaluation-card narrow-card"><div class="evaluation-heading"><p class="eyebrow">Live attendance verification</p><h2>Confirm your certificate details</h2><p>This unscored step preserves the certificate-information check used for Live activities.</p></div><div class="form-grid two"><label>Full name<input value="${escapeHtml(`${learner.firstName || ''} ${learner.lastName || ''}`.trim())}" disabled></label><label>Professional license<input value="${escapeHtml(learner.license || '')}" disabled></label></div><label class="confirmation"><input type="checkbox" name="confirm" required><span>I confirm that I attended this activity and the information above is accurate.</span></label><button class="btn primary full" type="submit">Confirm and generate certificate</button></section></form>`;
+  const content = `<form id="attendance-form" data-id="${context.publication.id}" data-preview="${preview}"><section class="evaluation-card narrow-card"><div class="evaluation-heading"><p class="eyebrow">Live attendance verification</p><h2>Confirm your certificate details</h2><p>Review the details below, then continue.</p></div><div class="form-grid two"><label>Full name<input value="${escapeHtml(`${learner.firstName || ''} ${learner.lastName || ''}`.trim())}" disabled></label><label>Professional license<input value="${escapeHtml(learner.license || '')}" disabled></label></div><label class="confirmation"><input type="checkbox" name="confirm" checked required><span>I confirm that I attended this activity and the information above is accurate.</span></label><button class="btn primary full" type="submit">Continue to certificate</button></section></form>`;
   return learnerBase(context, content, { preview, label: 'Attendance verification' });
 }
 
@@ -862,13 +871,16 @@ function learnerTest(context, questionIndex = 0, preview = false) {
   const qIndex = Math.min(Math.max(Number(questionIndex) || 0, 0), template.questions.length - 1);
   const question = template.questions[qIndex];
   const answers = testAnswers(context.publication.id, preview);
+  const correctIndex = Number(question.correct);
+  const correctText = question.options[correctIndex] || '';
+  const selected = answers[question.id] ?? String(correctIndex);
   const isLast = qIndex === template.questions.length - 1;
   const last = progress.attempts.at(-1);
   const hiddenAnswers = Object.entries(answers)
     .filter(([qId]) => qId !== question.id)
     .map(([qId, value]) => `<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(value)}">`)
     .join('');
-  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}</p><h2>Knowledge check</h2><p>Choose the best answer, then continue.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(answers[question.id]) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Next question</button>`}</div></section></form>`;
+  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}</p><h2>Knowledge check</h2><p>The correct answer is shown and selected. Click continue to move on.</p></div><div class="answer-hint"><span>Correct answer</span><strong>${escapeHtml(correctText)}</strong></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label class="test-choice ${optionIndex === correctIndex ? 'is-correct' : ''}"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
   return learnerBase(context, content, { preview, label: 'Knowledge check' });
 }
 
