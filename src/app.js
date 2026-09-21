@@ -7,6 +7,7 @@ import {
   formatDate,
   isExpired,
   learnerProgress,
+  safeSlug,
   scoreTest
 } from './domain.js';
 import { downloadCertificatePdf, renderCertificate } from './certificate.js';
@@ -29,6 +30,72 @@ const routeParts = () => location.hash.replace(/^#\/?/, '').split('/').filter(Bo
 const state = () => store.getState();
 const routeLink = (path, label, className = '') => `<a class="${className}" href="#/${path}">${label}</a>`;
 const previewSessions = new Map();
+const WIZARD_STORAGE_KEY = 'lli-activity-draft';
+
+const ACTIVITY_TYPE_HELP = {
+  live: 'Attend in person or online. No knowledge check required.',
+  'home-study': 'Complete on your own schedule. Includes a knowledge check.',
+  hybrid: 'Mix of live and self-paced learning with a knowledge check.'
+};
+
+function wizardDraftKey(id) {
+  return `${WIZARD_STORAGE_KEY}:${id || 'new'}`;
+}
+
+function loadWizardDraft(id) {
+  try {
+    return JSON.parse(sessionStorage.getItem(wizardDraftKey(id)) || 'null') || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveWizardDraft(id, draft) {
+  sessionStorage.setItem(wizardDraftKey(id), JSON.stringify(draft));
+}
+
+function clearWizardDraft(id) {
+  sessionStorage.removeItem(wizardDraftKey(id));
+}
+
+function wizardNextStep(currentStep, activityType) {
+  if (currentStep === 4 && !ACTIVITY_TYPES[activityType]?.requiresTest) return 6;
+  return Math.min(currentStep + 1, 6);
+}
+
+function wizardPrevStep(currentStep, activityType) {
+  if (currentStep === 6 && !ACTIVITY_TYPES[activityType]?.requiresTest) return 4;
+  return Math.max(currentStep - 1, 1);
+}
+
+function testAnswers(pubId, preview) {
+  if (preview) {
+    const session = previewSession(pubId);
+    session.testAnswers ||= {};
+    return session.testAnswers;
+  }
+  try {
+    return JSON.parse(sessionStorage.getItem(`test-answers-${pubId}`) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveTestAnswers(pubId, preview, answers) {
+  if (preview) {
+    previewSession(pubId).testAnswers = answers;
+  } else {
+    sessionStorage.setItem(`test-answers-${pubId}`, JSON.stringify(answers));
+  }
+}
+
+function clearTestAnswers(pubId, preview) {
+  if (preview) {
+    delete previewSession(pubId).testAnswers;
+  } else {
+    sessionStorage.removeItem(`test-answers-${pubId}`);
+  }
+}
 
 function previewSession(publicationId) {
   if (!previewSessions.has(publicationId)) {
@@ -71,22 +138,24 @@ function statusBadge(status) {
 
 function adminShell(title, subtitle, content, active = 'dashboard', actions = '') {
   const navigation = [
-    ['dashboard', 'Overview', 'Dashboard'],
-    ['activities', 'Activities', 'Activities'],
-    ['templates', 'Templates', 'Templates'],
-    ['reports', 'Reports', 'Reports'],
-    ['certificates', 'Certificates', 'Certificates']
+    ['dashboard', 'Overview'],
+    ['activities', 'Activities'],
+    ['templates', 'Templates'],
+    ['reports', 'Reports'],
+    ['certificates', 'Certificates']
   ];
   document.body.className = 'admin-page';
   return `
     <div class="admin-shell">
+      <div class="menu-backdrop" data-action="menu-close"></div>
       <aside class="admin-sidebar">
+        <button class="sidebar-close" data-action="menu-close">Close</button>
         <div class="admin-brand"><img src="assets/logo.png?v=2" alt="Lifespan Learning Institute"></div>
         <nav aria-label="Administrator navigation">
-          ${navigation.map(([id, label, text]) => `
+          ${navigation.map(([id, label]) => `
             <a href="#/admin/${id}" class="${active === id ? 'active' : ''}">
               <span class="nav-monogram" aria-hidden="true">${label.slice(0, 1)}</span>
-              <span>${text}</span>
+              <span>${label}</span>
             </a>`).join('')}
         </nav>
         <div class="sidebar-note">
@@ -115,31 +184,27 @@ function adminDashboard() {
   const responses = data.submissions.length;
   const stats = [
     ['Published activities', published, 'Ready to share'],
-    ['Reusable templates', data.templates.evaluations.length + data.templates.tests.length + data.templates.certificates.length, 'Evaluation, test, certificate'],
-    ['Evaluation responses', responses, 'Across all activity versions'],
-    ['Certificates issued', data.certificates.length, 'Eligibility verified']
+    ['Saved templates', data.templates.evaluations.length + data.templates.tests.length + data.templates.certificates.length, 'Evaluation, test, certificate'],
+    ['Evaluation responses', responses, 'Across all saved versions'],
+    ['Certificates issued', data.certificates.length, 'Requirements met']
   ];
   const recent = data.publications.slice(0, 3).map((publication) => {
     const context = activityContext(data, publication);
     return `
       <article class="activity-row">
         <div>${statusBadge(publication.status)}<h3>${escapeHtml(context.course?.name)}</h3><p>${escapeHtml(context.cohort?.name)} · ${escapeHtml(context.module?.name)}</p></div>
-        <div class="row-actions">${routeLink(`admin/activity/${publication.id}/edit`, 'Edit', 'btn secondary small')}${routeLink(`preview/${publication.id}`, 'Preview', 'btn ghost small')}</div>
+        <div class="row-actions">${routeLink(`admin/activity/${publication.id}/edit/1`, 'Edit', 'btn secondary small')}${routeLink(`preview/${publication.id}`, 'Preview', 'btn ghost small')}</div>
       </article>`;
   }).join('');
   const content = `
-    <section class="welcome-panel">
-      <div><p class="eyebrow">Reusable workflow</p><h2>Build once. Adapt and publish in minutes.</h2><p>Standard evaluation sections stay consistent while objectives, presenters, cohorts, tests, and certificates remain activity-specific.</p></div>
-      ${routeLink('admin/activity/new/edit', 'Create activity', 'btn primary')}
+    <section class="guide-actions">
+      ${routeLink('admin/activity/new/edit/1', '<span class="guide-icon">+</span><strong>Create activity</strong><small>Set up a new learning activity step by step.</small>', 'guide-card')}
+      ${routeLink('admin/activities', '<span class="guide-icon">A</span><strong>Open activities</strong><small>View, edit, and publish your activities.</small>', 'guide-card')}
+      ${routeLink('admin/reports', '<span class="guide-icon">R</span><strong>View reports</strong><small>See evaluation results and download reports.</small>', 'guide-card')}
     </section>
-    <section class="metric-grid">${stats.map(([label, value, note]) => `<article class="metric"><span>${escapeHtml(label)}</span><strong>${value}</strong><small>${escapeHtml(note)}</small></article>`).join('')}</section>
-    <div class="content-grid">
-      <section class="content-card"><div class="section-heading"><div><h2>Recent activities</h2><p>Continue editing or preview the learner experience.</p></div>${routeLink('admin/activities', 'View all', 'text-action')}</div>${recent}</section>
-      <aside class="content-card quick-start"><h2>Recommended workflow</h2>
-        <ol><li><strong>Duplicate</strong><span>Start from a proven activity or template.</span></li><li><strong>Customize</strong><span>Update the cohort, objectives, presenters, and dates.</span></li><li><strong>Preview</strong><span>Verify learner steps and certificate data.</span></li><li><strong>Publish</strong><span>Copy one stable public link.</span></li></ol>
-      </aside>
-    </div>`;
-  return adminShell('Dashboard', 'A clear view of activities, templates, responses, and certificates.', content, 'dashboard', routeLink('admin/activity/new/edit', 'New activity', 'btn primary'));
+    <section class="metric-grid secondary">${stats.map(([label, value, note]) => `<article class="metric"><span>${escapeHtml(label)}</span><strong>${value}</strong><small>${escapeHtml(note)}</small></article>`).join('')}</section>
+    <section class="content-card"><div class="section-heading"><div><h2>Recent activities</h2><p>Pick up where you left off.</p></div>${routeLink('admin/activities', 'View all', 'text-action')}</div>${recent || emptyState('No activities yet', 'Create your first activity to get started.', routeLink('admin/activity/new/edit/1', 'Create activity', 'btn primary'))}</section>`;
+  return adminShell('Overview', 'Start here to create activities, view responses, and issue certificates.', content, 'dashboard', routeLink('admin/activity/new/edit/1', 'New activity', 'btn primary'));
 }
 
 function adminActivities() {
@@ -148,95 +213,250 @@ function adminActivities() {
     const context = activityContext(data, publication);
     const responseCount = data.submissions.filter((item) => item.publicationId === publication.id).length;
     const publicUrl = `${location.origin}${location.pathname}#/learn/${publication.slug}`;
+    const primaryAction = publication.status === 'published'
+      ? routeLink(`admin/activity/${publication.id}/edit/1`, 'Edit', 'btn secondary')
+      : `<button class="btn primary" data-action="toggle-publish" data-id="${publication.id}">Publish</button>`;
     return `
       <article class="activity-card">
         <div class="activity-card-main">
-          <div class="activity-topline">${statusBadge(publication.status)}<span class="type-chip">${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)}</span><span>Revision ${publication.revision}</span></div>
+          <div class="activity-topline">${statusBadge(publication.status)}<span class="type-chip">${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)}</span><span>Saved version ${publication.revision}</span></div>
           <h2>${escapeHtml(context.course?.name)}</h2>
-          <p>${escapeHtml(context.version?.name)} · ${escapeHtml(context.cohort?.name)} · ${escapeHtml(context.module?.name)}</p>
-          <div class="activity-meta"><span>Deadline <strong>${formatDate(publication.deadline)}</strong></span><span>Objectives <strong>${publication.objectives.length}</strong></span><span>Responses <strong>${responseCount}</strong></span></div>
+          <p>${escapeHtml(context.version?.name)} · Class group: ${escapeHtml(context.cohort?.name)} · ${escapeHtml(context.module?.name)}</p>
+          <div class="activity-meta"><span>Deadline <strong>${formatDate(publication.deadline)}</strong></span><span>Learning goals <strong>${publication.objectives.length}</strong></span><span>Responses <strong>${responseCount}</strong></span><span>Credit hours <strong>${context.module?.creditHours}</strong></span></div>
           ${publication.status === 'published' ? `<div class="published-link"><span>${escapeHtml(publicUrl)}</span><button data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy</button></div>` : ''}
         </div>
-        <div class="activity-card-actions">
-          ${routeLink(`admin/activity/${publication.id}/edit`, 'Edit', 'btn secondary')}
-          ${routeLink(`preview/${publication.id}`, 'Preview as learner', 'btn ghost')}
-          <button class="btn ghost" data-action="duplicate-publication" data-id="${publication.id}">Duplicate</button>
-          <button class="btn ${publication.status === 'published' ? 'danger-ghost' : 'primary'}" data-action="toggle-publish" data-id="${publication.id}">${publication.status === 'published' ? 'Unpublish' : 'Publish'}</button>
+        <div class="activity-card-actions senior">
+          ${primaryAction}
+          ${publication.status !== 'published' ? routeLink(`admin/activity/${publication.id}/edit/1`, 'Edit', 'btn secondary') : ''}
+          <details class="more-actions">
+            <summary>More actions</summary>
+            <div class="more-panel">
+              <button class="btn ghost" data-action="duplicate-publication" data-id="${publication.id}">Duplicate</button>
+              ${routeLink(`preview/${publication.id}`, 'Preview', 'btn ghost')}
+              ${publication.status === 'published' ? `<button class="btn ghost" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link</button><button class="btn danger-ghost" data-action="toggle-publish" data-id="${publication.id}">Unpublish</button>` : ''}
+            </div>
+          </details>
         </div>
       </article>`;
   }).join('');
   return adminShell(
     'Activities',
-    'Reuse existing configurations or publish a new learner experience.',
-    `<div class="filter-bar"><div><strong>${data.publications.length} activities</strong><span>${data.publications.filter((item) => item.status === 'draft').length} drafts need review</span></div>${routeLink('admin/activity/new/edit', 'Create from template', 'btn primary')}</div><section class="activity-list">${rows}</section>`,
+    'View and manage your learning activities.',
+    `<div class="filter-bar"><div><strong>${data.publications.length} activities</strong><span>${data.publications.filter((item) => item.status === 'draft').length} drafts not yet published</span></div>${routeLink('admin/activity/new/edit/1', 'Create activity', 'btn primary')}</div><section class="activity-list">${rows}</section>`,
     'activities',
-    routeLink('admin/activity/new/edit', 'New activity', 'btn primary')
+    routeLink('admin/activity/new/edit/1', 'New activity', 'btn primary')
   );
 }
 
-function adminActivityEditor(id) {
+function adminActivityEditor(id, stepParam) {
   const data = state();
-  const existing = data.publications.find((item) => item.id === id);
-  const publication = existing || {
-    id: '',
-    slug: '',
-    status: 'draft',
-    courseId: data.courses[0].id,
-    versionId: data.versions[0].id,
-    cohortId: data.cohorts[0].id,
-    moduleId: data.modules[0].id,
-    evaluationTemplateId: data.templates.evaluations[0].id,
-    testTemplateId: null,
-    certificateTemplateId: 'cert-live-v1',
-    activityType: 'live',
-    deadline: '2027-12-31',
-    objectives: ['', '', '', '']
+  const draftKey = id === 'new' ? 'new' : id;
+  const existing = id && id !== 'new' ? data.publications.find((item) => item.id === id) : null;
+  const defaults = {
+    id: existing?.id || '',
+    slug: existing?.slug || '',
+    status: existing?.status || 'draft',
+    courseId: existing?.courseId || data.courses[0].id,
+    versionId: existing?.versionId || data.versions[0].id,
+    cohortId: existing?.cohortId || data.cohorts[0].id,
+    moduleId: existing?.moduleId || data.modules[0].id,
+    evaluationTemplateId: existing?.evaluationTemplateId || data.templates.evaluations[0].id,
+    testTemplateId: existing?.testTemplateId || null,
+    certificateTemplateId: existing?.certificateTemplateId || 'cert-live-v1',
+    activityType: existing?.activityType || 'live',
+    deadline: existing?.deadline || '2027-12-31',
+    objectives: existing?.objectives || ['', '', '', '']
   };
+  const draft = loadWizardDraft(draftKey);
+  const merged = { ...defaults, ...draft };
+  if (typeof merged.objectives === 'string') {
+    merged.objectives = merged.objectives.split('\n');
+  }
+  const publication = { ...defaults, ...merged, objectives: Array.isArray(merged.objectives) ? merged.objectives : defaults.objectives };
   const resolved = activityContext(data, publication);
-  const content = `
-    <form id="activity-form" class="editor-layout" data-id="${escapeHtml(publication.id)}">
-      <div class="editor-main">
-        <section class="editor-card">
-          <div class="wizard-step"><span>1</span><div><h2>Activity structure</h2><p>Connect the activity to the correct course, version, cohort, and module.</p></div></div>
-          <div class="form-grid two">
-            <label>Course<select name="courseId">${selectOptions(data.courses, publication.courseId, (item) => item.name)}</select></label>
-            <label>Version<select name="versionId">${selectOptions(data.versions, publication.versionId, (item) => `${byId(data.courses, item.courseId)?.name} — ${item.name}`)}</select></label>
-            <label>Cohort<select name="cohortId">${selectOptions(data.cohorts, publication.cohortId, (item) => `${item.name} — ${item.location}`)}</select></label>
-            <label>Module<select name="moduleId">${selectOptions(data.modules, publication.moduleId, (item) => `${item.name} — ${item.creditHours} CE` )}</select></label>
-            <label>Activity location<input name="location" value="${escapeHtml(resolved?.cohort?.location || '')}" required></label>
-            <label>CE credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(resolved?.module?.creditHours || '')}" required></label>
-            <label>Activity start date<input type="date" name="startDate" value="${escapeHtml(resolved?.module?.startDate || '')}" required></label>
-            <label>Activity end date<input type="date" name="endDate" value="${escapeHtml(resolved?.module?.endDate || '')}" required></label>
-            <label class="span-two">Presenters (one per line)<textarea name="presenters" rows="4" required>${escapeHtml((resolved?.cohort?.presenters || []).join('\n'))}</textarea></label>
+  const step = Math.min(Math.max(Number(stepParam) || 1, 1), 6);
+  const requiresTest = ACTIVITY_TYPES[publication.activityType]?.requiresTest;
+  if (existing && step !== 6) {
+    sessionStorage.removeItem(`activity-saved-${existing.id}`);
+  }
+  const savedFlag = existing && sessionStorage.getItem(`activity-saved-${existing.id}`);
+
+  if (savedFlag && step === 6) {
+    const publicUrl = `${location.origin}${location.pathname}#/learn/${existing.slug}`;
+    const content = `
+      <section class="wizard-page celebrate">
+        <div class="celebrate-link">
+          <h2>Activity saved</h2>
+          <p>Your activity is ready. Share the link below or preview the learner experience.</p>
+          <div class="published-link large"><span>${escapeHtml(publicUrl)}</span><button class="btn primary" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link</button></div>
+          <div class="celebrate-actions">
+            ${routeLink(`preview/${existing.id}`, 'Preview', 'btn secondary')}
+            ${existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish</button>` : `<button class="btn ghost" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link again</button>`}
+            ${routeLink('admin/activities', 'Back to activities', 'btn ghost')}
           </div>
-        </section>
-        <section class="editor-card">
-          <div class="wizard-step"><span>2</span><div><h2>Workflow and deadline</h2><p>The activity type determines whether a scored test is required.</p></div></div>
-          <div class="form-grid two">
-            <label>Activity type<select name="activityType">${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `<option value="${value}" ${value === publication.activityType ? 'selected' : ''}>${item.label}</option>`).join('')}</select></label>
-            <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline)}" required></label>
-            <label>Evaluation template<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} · v${item.version}`)}</select></label>
-            <label>Test template<select name="testTemplateId"><option value="">Not required for Live</option>${selectOptions(data.templates.tests, publication.testTemplateId, (item) => `${item.name} · ${item.passPercent}% pass`)}</select></label>
-            <label>Certificate template<select name="certificateTemplateId">${selectOptions(data.templates.certificates, publication.certificateTemplateId, (item) => item.name)}</select></label>
-            <label>Public link slug<input name="slug" value="${escapeHtml(publication.slug)}" placeholder="generated-from-course-name"></label>
-          </div>
-        </section>
-        <section class="editor-card">
-          <div class="wizard-step"><span>3</span><div><h2>Learning objectives</h2><p>Enter one objective per line. At least four are required.</p></div></div>
-          <label>Objectives<textarea name="objectives" rows="9" required>${escapeHtml(publication.objectives.join('\n'))}</textarea></label>
-        </section>
+        </div>
+      </section>`;
+    return adminShell('Activity saved', 'Your changes have been saved as a new version.', content, 'activities');
+  }
+
+  const objectivesText = (Array.isArray(publication.objectives) ? publication.objectives : defaults.objectives).join('\n');
+  const presentersText = draft.presenters
+    || (resolved?.cohort?.presenters || []).join('\n');
+  const locationValue = draft.location ?? resolved?.cohort?.location ?? '';
+  const creditHoursValue = draft.creditHours ?? resolved?.module?.creditHours ?? '';
+  const startDateValue = draft.startDate ?? resolved?.module?.startDate ?? '';
+  const endDateValue = draft.endDate ?? resolved?.module?.endDate ?? '';
+  const certTemplate = ACTIVITY_TYPES[publication.activityType]?.certificateTemplate || publication.certificateTemplateId;
+
+  const hiddenFields = (currentStep) => {
+    const fields = {
+      activityType: publication.activityType,
+      courseId: publication.courseId,
+      versionId: publication.versionId,
+      cohortId: publication.cohortId,
+      moduleId: publication.moduleId,
+      location: locationValue,
+      creditHours: creditHoursValue,
+      startDate: startDateValue,
+      endDate: endDateValue,
+      presenters: presentersText,
+      deadline: publication.deadline,
+      objectives: objectivesText,
+      evaluationTemplateId: publication.evaluationTemplateId,
+      testTemplateId: publication.testTemplateId || '',
+      certificateTemplateId: certTemplate
+    };
+    return Object.entries(fields)
+      .filter(([name]) => {
+        if (currentStep === 1 && name === 'activityType') return false;
+        if (currentStep === 2 && ['courseId', 'versionId', 'cohortId', 'moduleId'].includes(name)) return false;
+        if (currentStep === 3 && ['location', 'creditHours', 'startDate', 'endDate', 'presenters', 'deadline'].includes(name)) return false;
+        if (currentStep === 4 && ['objectives', 'evaluationTemplateId', 'certificateTemplateId'].includes(name)) return false;
+        if (currentStep === 5 && name === 'testTemplateId') return false;
+        return true;
+      })
+      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`)
+      .join('');
+  };
+
+  const stepLabels = [
+    'Activity type',
+    'Course details',
+    'Dates and place',
+    'Learning goals',
+    requiresTest ? 'Knowledge check' : 'Knowledge check',
+    'Review'
+  ];
+
+  const step1 = `
+    <section class="wizard-page" data-wizard-step="1">
+      <h2>What kind of activity?</h2>
+      <p>Choose the format that best matches how learners will complete this activity.</p>
+      <div class="type-choice-grid">
+        ${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `
+          <label class="type-choice">
+            <input type="radio" name="activityType" value="${value}" ${publication.activityType === value ? 'checked' : ''} required>
+            <span><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(ACTIVITY_TYPE_HELP[value])}</span></span>
+          </label>`).join('')}
       </div>
-      <aside class="editor-aside">
-        <section class="summary-card">
-          <p class="eyebrow">Before publishing</p><h2>Review checklist</h2>
-          <ul class="check-list"><li>Course hierarchy assigned</li><li>At least four objectives</li><li>Presenters come from cohort</li><li>Test added for Home Study/Hybrid</li><li>Certificate template selected</li><li>Deadline confirmed</li></ul>
-          <button class="btn primary full" type="submit">Save activity</button>
-          ${existing ? routeLink(`preview/${existing.id}`, 'Preview as learner', 'btn ghost full') : ''}
-          ${routeLink('admin/activities', 'Cancel', 'text-action center-link')}
-        </section>
-      </aside>
+    </section>`;
+
+  const step2 = `
+    <section class="wizard-page" data-wizard-step="2">
+      <h2>Which course, class group, and module?</h2>
+      <p>Connect this activity to the right course structure.</p>
+      <div class="form-grid two">
+        <label>Course<select name="courseId">${selectOptions(data.courses, publication.courseId, (item) => item.name)}</select></label>
+        <label>Version<select name="versionId">${selectOptions(data.versions, publication.versionId, (item) => `${byId(data.courses, item.courseId)?.name} — ${item.name}`)}</select></label>
+        <label>Class group<select name="cohortId">${selectOptions(data.cohorts, publication.cohortId, (item) => `${item.name} — ${item.location}`)}</select></label>
+        <label>Module<select name="moduleId">${selectOptions(data.modules, publication.moduleId, (item) => `${item.name} — ${item.creditHours} credit hours`)}</select></label>
+      </div>
+    </section>`;
+
+  const step3 = `
+    <section class="wizard-page" data-wizard-step="3">
+      <h2>Dates, place, and presenters</h2>
+      <p>When and where will this activity take place?</p>
+      <div class="form-grid two">
+        <label>Activity location<input name="location" value="${escapeHtml(locationValue)}" required></label>
+        <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
+        <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
+        <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
+        <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline)}" required></label>
+        <label class="span-two">Presenters (one per line)<textarea name="presenters" rows="4" required>${escapeHtml(presentersText)}</textarea></label>
+      </div>
+    </section>`;
+
+  const step4 = `
+    <section class="wizard-page" data-wizard-step="4">
+      <h2>Learning goals and evaluation</h2>
+      <p>Enter at least four learning goals. One per line.</p>
+      <label>Learning goals<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
+      <label>Evaluation template<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} · v${item.version}`)}</select></label>
+      <input type="hidden" name="certificateTemplateId" value="${escapeHtml(certTemplate)}">
+      <p class="muted">Certificate template is chosen automatically based on activity type.</p>
+    </section>`;
+
+  const step5 = requiresTest ? `
+    <section class="wizard-page" data-wizard-step="5">
+      <h2>Knowledge check template</h2>
+      <p>Select the test learners must pass to earn their certificate.</p>
+      <label>Test template<select name="testTemplateId" required>${selectOptions(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id, (item) => `${item.name} · ${item.passPercent}% to pass`)}</select></label>
+    </section>` : `
+    <section class="wizard-page" data-wizard-step="5">
+      <h2>Knowledge check</h2>
+      <p>No knowledge check needed for Live activities. Continue to review.</p>
+    </section>`;
+
+  const courseName = byId(data.courses, publication.courseId)?.name || '';
+  const cohortName = byId(data.cohorts, publication.cohortId)?.name || '';
+  const moduleName = byId(data.modules, publication.moduleId)?.name || '';
+  const step6 = `
+    <section class="wizard-page" data-wizard-step="6">
+      <h2>Review your activity</h2>
+      <p>Check everything looks right, then save.</p>
+      <dl class="review-list">
+        <div><dt>Activity type</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)}</dd></div>
+        <div><dt>Course</dt><dd>${escapeHtml(courseName)}</dd></div>
+        <div><dt>Class group</dt><dd>${escapeHtml(cohortName)}</dd></div>
+        <div><dt>Module</dt><dd>${escapeHtml(moduleName)}</dd></div>
+        <div><dt>Location</dt><dd>${escapeHtml(locationValue)}</dd></div>
+        <div><dt>Credit hours</dt><dd>${escapeHtml(creditHoursValue)}</dd></div>
+        <div><dt>Deadline</dt><dd>${formatDate(publication.deadline)}</dd></div>
+        <div><dt>Learning goals</dt><dd>${(objectivesText.split('\n').filter(Boolean).length)} entered</dd></div>
+        ${requiresTest ? `<div><dt>Knowledge check</dt><dd>${escapeHtml(byId(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id)?.name || 'Selected')}</dd></div>` : ''}
+        <div><dt>Public link</dt><dd>Will be created from course name</dd></div>
+      </dl>
+      <button class="btn primary full" type="submit">Save activity</button>
+    </section>`;
+
+  const steps = [step1, step2, step3, step4, step5, step6];
+  const currentPage = steps[step - 1];
+
+  const content = `
+    <form id="activity-form" class="editor-layout wizard-layout" data-id="${escapeHtml(publication.id)}" data-step="${step}" data-draft-key="${escapeHtml(draftKey)}">
+      <div class="named-steps wizard-steps">
+        ${stepLabels.map((label, index) => {
+          const stepNum = index + 1;
+          const skipped = stepNum === 5 && !requiresTest;
+          const stateClass = stepNum === step ? 'active' : stepNum < step ? 'done' : '';
+          return `<button type="button" class="${stateClass}${skipped && step > 5 ? ' done' : ''}" data-action="wizard-goto" data-step="${stepNum}" ${skipped ? 'aria-label="Skipped for Live activities"' : ''}>${escapeHtml(label)}</button>`;
+        }).join('')}
+      </div>
+      ${hiddenFields(step)}
+      ${currentPage}
+      <div class="form-navigation wizard-nav">
+        ${step > 1 ? `<button type="button" class="btn ghost" data-action="wizard-prev">Previous</button>` : routeLink('admin/activities', 'Cancel', 'btn ghost')}
+        ${step < 6 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : ''}
+      </div>
     </form>`;
-  return adminShell(existing ? 'Edit activity' : 'Create activity', existing ? 'Changes create a new activity revision without altering historical responses.' : 'Start with reusable templates and add only activity-specific information.', content, 'activities');
+
+  return adminShell(
+    existing ? 'Edit activity' : 'Create activity',
+    existing ? 'Each save creates a new version. Past responses stay unchanged.' : 'Follow the steps below to set up your activity.',
+    content,
+    'activities'
+  );
 }
 
 function adminTemplates() {
@@ -255,7 +475,7 @@ function adminTemplates() {
     <div class="template-grid">${evaluationCards}</div>
     <section class="section-heading standalone lower"><div><p class="eyebrow">Supporting templates</p><h2>Tests and certificates</h2></div></section>
     <div class="template-grid two-col">${testCards}${certCards}</div>`;
-  return adminShell('Templates', 'Create a reliable baseline once, then reuse it across cohorts and modules.', content, 'templates');
+  return adminShell('Templates', 'Create a reliable baseline once, then reuse it across class groups and modules.', content, 'templates');
 }
 
 function adminTemplateEditor(id) {
@@ -358,11 +578,11 @@ function adminReports(selectedId = '') {
         const itemContext = activityContext(data, publication);
         return `<option value="${publication.id}" ${publication.id === selected ? 'selected' : ''}>${escapeHtml(itemContext.course?.name)} — ${escapeHtml(itemContext.cohort?.name)}</option>`;
       }).join('')}</select></label>
-      <div><button class="btn secondary" data-action="export-csv" data-id="${selected}">Export CSV</button><button class="btn ghost" data-action="print-report">Print summary</button></div>
+      <div class="report-primary-actions"><button class="btn primary" data-action="export-csv" data-id="${selected}">Export CSV</button><button class="btn secondary" data-action="print-report">Print</button><button class="btn ghost" data-action="toggle-more-filters">More filters</button></div>
     </section>
-    <section class="report-filters">
+    <section class="report-filters collapsed">
       <label>Version<select class="report-jump-filter" data-field="versionId">${selectOptions(data.versions, context?.version?.id, (item) => item.name)}</select></label>
-      <label>Cohort<select class="report-jump-filter" data-field="cohortId">${selectOptions(data.cohorts, context?.cohort?.id, (item) => item.name)}</select></label>
+      <label>Class group<select class="report-jump-filter" data-field="cohortId">${selectOptions(data.cohorts, context?.cohort?.id, (item) => item.name)}</select></label>
       <label>Module<select class="report-jump-filter" data-field="moduleId">${selectOptions(data.modules, context?.module?.id, (item) => item.name)}</select></label>
       <label>Presenter<select class="report-jump-filter" data-field="presenter"><option value="">All presenters</option>${presenterOptions.map((presenter) => `<option value="${escapeHtml(presenter)}" ${presenter === presenters[0] ? 'selected' : ''}>${escapeHtml(presenter)}</option>`).join('')}</select></label>
       <label>From<input id="report-date-from" type="date" value="${escapeHtml(reportDateFrom)}"></label>
@@ -390,7 +610,7 @@ function adminReports(selectedId = '') {
       ${reportQuestionTable('Program Administration', 'Program administration and disclosures.', STANDARD_QUESTIONS.administration, report.submissions, (question) => `administration.${question.id}`)}
       ${writtenSections}
     </div>`;
-  return adminShell('Evaluation reports', 'Review aggregate outcomes by activity, cohort, and module.', content, 'reports');
+  return adminShell('Reports', 'Review evaluation results by activity, class group, and module.', content, 'reports');
 }
 
 function adminCertificates() {
@@ -400,7 +620,7 @@ function adminCertificates() {
   const templateCards = data.templates.certificates.map((template) => `<article class="mini-template"><img src="${template.asset}" alt=""><div><strong>${escapeHtml(template.name)}</strong><span>${template.activityTypes.map((type) => ACTIVITY_TYPES[type].label).join(', ')}</span></div></article>`).join('');
   const content = `
     <section class="content-grid certificates-layout"><div class="content-card"><div class="section-heading"><div><h2>Issued certificates</h2><p>Generated only after the configured completion rules are met.</p></div></div>${issued || emptyState('No certificates issued yet', 'Complete a learner flow to create the first certificate.')}</div><aside class="content-card"><h2>Certificate templates</h2><div class="mini-template-list">${templateCards}</div></aside></section>`;
-  return adminShell('Certificates', 'Review issued records and activity-specific certificate templates.', content, 'certificates');
+  return adminShell('Certificates', 'Review issued certificates and available certificate designs.', content, 'certificates');
 }
 
 function learnerBase(context, content, options = {}) {
@@ -413,7 +633,7 @@ function learnerBase(context, content, options = {}) {
     ${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}
     <main class="learner-main" id="main">
       <nav class="learner-breadcrumb">${routeLink(base, 'Activity overview')}<span>/</span><span>${escapeHtml(options.label || 'Details')}</span></nav>
-      ${options.hideCourse ? '' : `<section class="learner-course"><p class="eyebrow">${escapeHtml(cohort?.name)} · ${escapeHtml(module?.name)}</p><h1>${escapeHtml(course?.name)}</h1><div><span>${module?.creditHours} CE Hours</span><span>${escapeHtml(cohort?.location)}</span><span>Due ${formatDate(publication.deadline)}</span></div></section>`}
+      ${options.hideCourse ? '' : `<section class="learner-course"><p class="eyebrow">${escapeHtml(cohort?.name)} · ${escapeHtml(module?.name)}</p><h1>${escapeHtml(course?.name)}</h1><div><span>${module?.creditHours} credit hours</span><span>${escapeHtml(cohort?.location)}</span><span>Due ${formatDate(publication.deadline)}</span></div></section>`}
       ${content}
     </main>`;
 }
@@ -427,23 +647,53 @@ function learnerLanding(context, preview = false) {
   const { publication, course, cohort, module } = context;
   const progress = progressFor(context, preview);
   const expired = isExpired(publication);
-  const steps = ACTIVITY_TYPES[publication.activityType].requiresTest
-    ? [['Evaluation', 'Share required feedback'], ['Knowledge check', 'Pass 12 questions at 80%'], ['Certificate', 'Available after both steps']]
-    : [['Evaluation', 'Share required feedback'], ['Attendance details', 'Confirm certificate information'], ['Certificate', 'Available after both steps']];
+  const requiresTest = ACTIVITY_TYPES[publication.activityType].requiresTest;
+  const steps = requiresTest
+    ? [
+      ['Complete the evaluation', progress.submission],
+      ['Pass the knowledge check', progress.passedAttempt],
+      ['Get your certificate', progress.eligible]
+    ]
+    : [
+      ['Complete the evaluation', progress.submission],
+      ['Confirm attendance', progress.attendanceConfirmed],
+      ['Get your certificate', progress.eligible]
+    ];
+  const stepStatus = (done) => done ? 'Done' : 'Not started';
   const action = expired && !preview
     ? '<button class="btn primary" disabled>Completion window closed</button>'
     : progress.eligible
       ? routeLink(`${preview ? `preview/${publication.id}` : `learn/${publication.slug}`}/certificate`, 'View certificate', 'btn primary')
-      : `<a class="btn primary" href="${learnerHref(context, 'evaluation/0', preview)}">${progress.submission ? (progress.requiresTest ? 'Continue to test' : 'Confirm attendance') : 'Start evaluation'}</a>`;
+      : progress.submission
+        ? `<a class="btn primary" href="${learnerHref(context, requiresTest ? 'test/0' : 'attendance', preview)}">${requiresTest ? 'Continue to knowledge check' : 'Confirm attendance'}</a>`
+        : `<a class="btn primary" href="${learnerHref(context, 'evaluation/0', preview)}">Start evaluation</a>`;
   const content = `
-    <section class="learner-hero">
-      <div><span class="type-chip">${escapeHtml(ACTIVITY_TYPES[publication.activityType].label)}</span><h1>${escapeHtml(course.name)}</h1><p>${escapeHtml(module.name)} · ${module.creditHours} continuing education hours</p></div>
-      <div class="deadline-card ${expired ? 'expired' : ''}"><span>Completion deadline</span><strong>${formatDate(publication.deadline)}</strong><small>${expired ? 'This activity is closed.' : 'Your work saves on this device.'}</small></div>
+    <section class="checklist-card">
+      <h1>${escapeHtml(course.name)}</h1>
+      <p class="checklist-intro">Complete these steps to get your certificate.</p>
+      <div class="path-steps senior">
+        ${steps.map(([title, done], index) => `
+          <div>
+            <i>${index + 1}</i>
+            <span><strong>${escapeHtml(title)}</strong><small>${done ? 'You finished this step.' : 'This step is waiting for you.'}</small></span>
+            <em class="path-status ${done ? 'done' : ''}">${stepStatus(done)}</em>
+          </div>`).join('')}
+      </div>
+      <div class="checklist-action">${action}</div>
+      <div class="deadline-card ${expired ? 'expired' : ''}"><span>Completion deadline</span><strong>${formatDate(publication.deadline)}</strong><small>${expired ? 'This activity is closed.' : 'Your progress saves on this device.'}</small></div>
     </section>
-    <section class="learner-overview-grid">
-      <article class="content-card"><h2>Your completion path</h2><div class="path-steps">${steps.map(([title, text], index) => `<div><i>${index + 1}</i><span><strong>${title}</strong><small>${text}</small></span></div>`).join('')}</div>${action}</article>
-      <aside class="content-card activity-details"><h2>Activity details</h2><dl><div><dt>Version</dt><dd>${escapeHtml(context.version.name)}</dd></div><div><dt>Cohort</dt><dd>${escapeHtml(cohort.name)}</dd></div><div><dt>Module</dt><dd>${escapeHtml(module.name)}</dd></div><div><dt>Presenters</dt><dd>${escapeHtml(cohort.presenters.join(', '))}</dd></div><div><dt>Location</dt><dd>${escapeHtml(cohort.location)}</dd></div></dl></aside>
-    </section>`;
+    <details class="details-plain">
+      <summary>Activity details</summary>
+      <dl>
+        <div><dt>Activity type</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType].label)}</dd></div>
+        <div><dt>Version</dt><dd>${escapeHtml(context.version.name)}</dd></div>
+        <div><dt>Class group</dt><dd>${escapeHtml(cohort.name)}</dd></div>
+        <div><dt>Module</dt><dd>${escapeHtml(module.name)}</dd></div>
+        <div><dt>Credit hours</dt><dd>${module.creditHours}</dd></div>
+        <div><dt>Presenters</dt><dd>${escapeHtml(cohort.presenters.join(', '))}</dd></div>
+        <div><dt>Location</dt><dd>${escapeHtml(cohort.location)}</dd></div>
+      </dl>
+    </details>`;
   document.body.className = 'learner-page';
   return `<header class="learner-header"><div><img src="assets/logo.png?v=2" alt="Lifespan Learning Institute"><span>Continuing education</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}<main class="learner-main" id="main">${content}</main>`;
 }
@@ -461,7 +711,7 @@ function ratingQuestion(name, question, value = '') {
   const scale = typeof question === 'string' || !question.scale
     ? SCALE
     : question.scale.map((label, index) => [String(index + 1), label]);
-  return `<fieldset class="question rating-question"><legend>${escapeHtml(text)}</legend><div class="star-scale">${scale.map(([number, label]) => `<label class="star-choice"><input type="radio" name="${escapeHtml(name)}" value="${number}" ${String(value) === number ? 'checked' : ''} required><span class="rating-label"><strong>${number}</strong>${escapeHtml(label)}</span><span class="star" aria-hidden="true">★</span></label>`).join('')}</div></fieldset>`;
+  return `<fieldset class="question rating-question"><legend>${escapeHtml(text)}</legend><div class="star-scale">${scale.map(([number, label]) => `<label class="star-choice"><input type="radio" name="${escapeHtml(name)}" value="${number}" ${String(value) === number ? 'checked' : ''} required><span class="rating-label"><strong>${number}</strong>${escapeHtml(label)}</span></label>`).join('')}</div></fieldset>`;
 }
 
 function evaluationPages(context, draft) {
@@ -476,23 +726,28 @@ function evaluationPages(context, draft) {
       body: STANDARD_QUESTIONS.learning.map((question) => ratingQuestion(`learning.${question.id}`, question, draft.ratings?.[`learning.${question.id}`])).join('')
     },
     {
-      title: 'Learning objectives',
-      subtitle: 'Rate your ability to meet each activity-specific objective.',
+      title: 'Learning goals',
+      subtitle: 'Rate your ability to meet each learning goal.',
       body: context.publication.objectives.map((objective, index) => ratingQuestion(`objective.${index}`, objective, draft.ratings?.[`objective.${index}`])).join('')
     },
     {
       title: 'Presenters',
-      subtitle: 'Each presenter receives the same standardized rating questions.',
+      subtitle: 'Each presenter receives the same rating questions.',
       body: presenterQuestions.join('')
     },
     {
-      title: 'Environment and administration',
-      subtitle: 'Rate the learning environment and program administration.',
-      body: `<div class="subsection-title">Environment</div>${STANDARD_QUESTIONS.environment.map((question) => ratingQuestion(`environment.${question.id}`, question, draft.ratings?.[`environment.${question.id}`])).join('')}<div class="subsection-title">Administration</div>${STANDARD_QUESTIONS.administration.map((question) => ratingQuestion(`administration.${question.id}`, question, draft.ratings?.[`administration.${question.id}`])).join('')}`
+      title: 'Environment',
+      subtitle: 'Rate the learning environment and technical support.',
+      body: STANDARD_QUESTIONS.environment.map((question) => ratingQuestion(`environment.${question.id}`, question, draft.ratings?.[`environment.${question.id}`])).join('')
     },
     {
-      title: 'Feedback and certificate details',
-      subtitle: 'Written comments are optional. Certificate identity fields are required.',
+      title: 'Administration',
+      subtitle: 'Rate program administration and disclosures.',
+      body: STANDARD_QUESTIONS.administration.map((question) => ratingQuestion(`administration.${question.id}`, question, draft.ratings?.[`administration.${question.id}`])).join('')
+    },
+    {
+      title: 'Your information',
+      subtitle: 'Written comments are optional. Certificate fields are required.',
       body: `<div class="feedback-grid">${STANDARD_QUESTIONS.written.map((question) => `<label>${escapeHtml(question.text)}<textarea name="comment.${question.id}" placeholder="Enter your response (optional)">${escapeHtml(draft.comments?.[question.id] || '')}</textarea></label>`).join('')}</div><div class="subsection-title">Certificate information</div><div class="form-grid two"><label>First name<input name="firstName" value="${escapeHtml(draft.learner?.firstName || '')}" required></label><label>Last name<input name="lastName" value="${escapeHtml(draft.learner?.lastName || '')}" required></label><label>Credential<input name="credential" value="${escapeHtml(draft.learner?.credential || '')}" placeholder="LCSW, PhD, LMFT"></label><label>Email address<input type="email" name="email" value="${escapeHtml(draft.learner?.email || '')}" required></label><label class="span-two">Professional license number<input name="license" value="${escapeHtml(draft.learner?.license || '')}" required></label></div>`
     }
   ];
@@ -503,10 +758,14 @@ function learnerEvaluation(context, pageIndex, preview = false) {
     ? previewSession(context.publication.id).draft
     : (state().drafts[context.publication.id] || { ratings: {}, comments: {}, learner: {} });
   const pages = evaluationPages(context, draft);
-  const page = pages[Math.min(Math.max(Number(pageIndex) || 0, 0), pages.length - 1)];
-  const base = preview ? `preview/${context.publication.id}` : `learn/${context.publication.slug}`;
-  const progress = `<div class="eval-progress"><div><span>Evaluation progress</span><strong>${Number(pageIndex) + 1} of ${pages.length}</strong></div><i><b style="width:${((Number(pageIndex) + 1) / pages.length) * 100}%"></b></i></div>`;
-  const content = `${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${pageIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${Number(pageIndex) + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div><p class="rating-help"><span aria-hidden="true">★</span>Select one response for each statement.</p>${page.body}</section><div class="form-navigation">${Number(pageIndex) > 0 ? routeLink(`${base}/evaluation/${Number(pageIndex) - 1}`, 'Previous', 'btn ghost') : routeLink(base, 'Back', 'btn ghost')}<button class="btn primary" type="submit">${Number(pageIndex) === pages.length - 1 ? 'Submit evaluation' : 'Save and continue'}</button></div></form>`;
+  const currentIndex = Math.min(Math.max(Number(pageIndex) || 0, 0), pages.length - 1);
+  const page = pages[currentIndex];
+  const namedSteps = `<div class="named-steps eval-named-steps">${pages.map((item, index) => `<span class="${index === currentIndex ? 'active' : ''}${index < currentIndex ? ' done' : ''}">${escapeHtml(item.title)}</span>`).join('')}</div>`;
+  const progress = `<div class="eval-progress"><div><span>Evaluation progress</span><strong>${currentIndex + 1} of ${pages.length}</strong></div><i><b style="width:${((currentIndex + 1) / pages.length) * 100}%"></b></i></div>`;
+  const prevButton = currentIndex > 0
+    ? `<button type="button" class="btn ghost" data-action="eval-prev">Previous</button>`
+    : routeLink(preview ? `preview/${context.publication.id}` : `learn/${context.publication.slug}`, 'Back', 'btn ghost');
+  const content = `${namedSteps}${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${currentIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${currentIndex + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div><p class="rating-help">Choose a number from 1 to 5 for each statement.</p>${page.body}</section><div class="form-navigation">${prevButton}<button class="btn primary" type="submit">${currentIndex === pages.length - 1 ? 'Submit evaluation' : 'Save and continue'}</button></div></form>`;
   return learnerBase(context, content, { preview, label: 'Evaluation' });
 }
 
@@ -518,17 +777,25 @@ function learnerAttendance(context, preview = false) {
   return learnerBase(context, content, { preview, label: 'Attendance verification' });
 }
 
-function learnerTest(context, preview = false) {
+function learnerTest(context, questionIndex = 0, preview = false) {
   const progress = progressFor(context, preview);
   if (!progress.submission) return learnerLanding(context, preview);
   if (progress.eligible) return learnerCertificate(context, preview);
   const template = context.testTemplate;
   if (!template || progress.attemptsRemaining <= 0) {
-    const content = emptyState('Attempt limit reached', 'You have used all three attempts. The certificate remains locked. Contact the program administrator for help.', routeLink(learnerHref(context, '', preview).slice(2), 'Activity overview', 'btn ghost'));
+    const content = emptyState('Attempt limit reached', 'You have used all attempts. Contact the program administrator for help.', routeLink(learnerHref(context, '', preview).slice(2), 'Activity overview', 'btn ghost'));
     return learnerBase(context, content, { preview, label: 'Knowledge check' });
   }
+  const qIndex = Math.min(Math.max(Number(questionIndex) || 0, 0), template.questions.length - 1);
+  const question = template.questions[qIndex];
+  const answers = testAnswers(context.publication.id, preview);
+  const isLast = qIndex === template.questions.length - 1;
   const last = progress.attempts.at(-1);
-  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining. Review your responses and try again.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Knowledge check · Attempt ${progress.attempts.length + 1} of ${template.maxAttempts}</p><h2>Score 80% or higher</h2><p>Answer all ${template.questions.length} questions. Results are recorded after each attempt.</p></div><div class="test-list">${template.questions.map((question, index) => `<fieldset class="test-question"><legend><span>${index + 1}</span>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label><input type="radio" name="${question.id}" value="${optionIndex}" required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset>`).join('')}</div><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a><button class="btn primary" type="submit">Submit attempt</button></div></section></form>`;
+  const hiddenAnswers = Object.entries(answers)
+    .filter(([qId]) => qId !== question.id)
+    .map(([qId, value]) => `<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(value)}">`)
+    .join('');
+  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}</p><h2>Knowledge check</h2><p>Choose the best answer, then continue.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(answers[question.id]) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Next question</button>`}</div></section></form>`;
   return learnerBase(context, content, { preview, label: 'Knowledge check' });
 }
 
@@ -570,7 +837,7 @@ function learnerCertificate(context, preview = false) {
       : store.issueCertificate(context.publication.id, learner);
     if (preview) session.certificate = certificate;
   }
-  const content = `<section class="certificate-view"><div class="completion-banner"><span>Requirements complete</span><strong>Your certificate is ready</strong><p>${escapeHtml(context.course.name)} · ${context.module.creditHours} CE Hours · ${escapeHtml(certificate.number)}</p></div><div class="certificate-frame"><canvas id="certificate-canvas" width="1666" height="1162" aria-label="Certificate for ${escapeHtml(certificate.learner.firstName)} ${escapeHtml(certificate.learner.lastName)}"></canvas></div><div class="certificate-actions"><button class="btn primary" data-action="download-certificate" data-id="${certificate.id}">Download certificate</button><button class="btn ghost" data-action="print-certificate">Print</button><a class="btn ghost" href="${learnerHref(context, '', preview)}">Activity overview</a></div><dl class="certificate-details"><div><dt>Learner</dt><dd>${escapeHtml([certificate.learner.firstName, certificate.learner.lastName, certificate.learner.credential].filter(Boolean).join(' '))}</dd></div><div><dt>Module</dt><dd>${escapeHtml(certificate.snapshot.moduleName)}</dd></div><div><dt>Presenters</dt><dd>${escapeHtml(certificate.snapshot.presenters.join(', '))}</dd></div><div><dt>Location</dt><dd>${escapeHtml(certificate.snapshot.location)}</dd></div><div><dt>Issued</dt><dd>${new Date(certificate.issuedAt).toLocaleDateString()}</dd></div></dl></section>`;
+  const content = `<section class="certificate-view"><div class="completion-banner success-large"><span>Congratulations</span><strong>Your certificate is ready</strong><p>${escapeHtml(context.course.name)} · ${context.module.creditHours} credit hours</p></div><div class="certificate-frame"><canvas id="certificate-canvas" width="1666" height="1162" aria-label="Certificate for ${escapeHtml(certificate.learner.firstName)} ${escapeHtml(certificate.learner.lastName)}"></canvas></div><div class="certificate-actions oversized"><button class="btn primary" data-action="download-certificate" data-id="${certificate.id}">Download certificate</button><button class="btn secondary" data-action="print-certificate">Print certificate</button></div><dl class="certificate-details minimal"><div><dt>Certificate number</dt><dd>${escapeHtml(certificate.number)}</dd></div><div><dt>Issued</dt><dd>${new Date(certificate.issuedAt).toLocaleDateString()}</dd></div></dl></section>`;
   const html = learnerBase(context, content, { preview, label: 'Certificate', hideCourse: true });
   setTimeout(async () => {
     const canvas = document.querySelector('#certificate-canvas');
@@ -600,7 +867,7 @@ function renderLearner(parts) {
   const screen = parts[offset] || 'overview';
   if (screen === 'evaluation') return learnerEvaluation(context, parts[offset + 1] || 0, preview);
   if (screen === 'attendance') return learnerAttendance(context, preview);
-  if (screen === 'test') return learnerTest(context, preview);
+  if (screen === 'test') return learnerTest(context, parts[offset + 1] || 0, preview);
   if (screen === 'certificate') return learnerCertificate(context, preview);
   return learnerLanding(context, preview);
 }
@@ -619,7 +886,7 @@ function render() {
   }
   const screen = parts[1] || 'dashboard';
   if (screen === 'activities') app.innerHTML = adminActivities();
-  else if (screen === 'activity') app.innerHTML = adminActivityEditor(parts[2]);
+  else if (screen === 'activity') app.innerHTML = adminActivityEditor(parts[2], parts[3] === 'edit' ? parts[4] : 1);
   else if (screen === 'templates') app.innerHTML = adminTemplates();
   else if (screen === 'template') app.innerHTML = adminTemplateEditor(parts[2]);
   else if (screen === 'reports') app.innerHTML = adminReports(parts[2]);
@@ -648,32 +915,41 @@ function collectEvaluation(form) {
 function submitActivityForm(form) {
   const data = new FormData(form);
   const activityType = data.get('activityType');
+  const course = byId(state().courses, data.get('courseId'));
+  const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
+  const draft = loadWizardDraft(draftKey);
+  for (const [key, value] of data.entries()) draft[key] = value;
+  const mergedData = { ...Object.fromEntries(data), ...draft };
   const result = store.savePublication({
     id: form.dataset.id || undefined,
-    courseId: data.get('courseId'),
-    versionId: data.get('versionId'),
-    cohortId: data.get('cohortId'),
-    moduleId: data.get('moduleId'),
+    courseId: mergedData.courseId,
+    versionId: mergedData.versionId,
+    cohortId: mergedData.cohortId,
+    moduleId: mergedData.moduleId,
     activityType,
-    deadline: data.get('deadline'),
-    location: data.get('location').trim(),
-    creditHours: Number(data.get('creditHours')),
-    startDate: data.get('startDate'),
-    endDate: data.get('endDate'),
-    presenters: String(data.get('presenters')).split('\n').map((item) => item.trim()).filter(Boolean),
-    evaluationTemplateId: data.get('evaluationTemplateId'),
-    testTemplateId: ACTIVITY_TYPES[activityType].requiresTest ? (data.get('testTemplateId') || state().templates.tests[0].id) : null,
+    deadline: mergedData.deadline,
+    location: String(mergedData.location || '').trim(),
+    creditHours: Number(mergedData.creditHours),
+    startDate: mergedData.startDate,
+    endDate: mergedData.endDate,
+    presenters: String(mergedData.presenters).split('\n').map((item) => item.trim()).filter(Boolean),
+    evaluationTemplateId: mergedData.evaluationTemplateId,
+    testTemplateId: ACTIVITY_TYPES[activityType].requiresTest ? (mergedData.testTemplateId || state().templates.tests[0].id) : null,
     certificateTemplateId: ACTIVITY_TYPES[activityType].certificateTemplate,
-    slug: data.get('slug'),
-    objectives: String(data.get('objectives')).split('\n').map((item) => item.trim()).filter(Boolean),
+    slug: form.dataset.id
+      ? (byId(state().publications, form.dataset.id)?.slug || safeSlug(course?.name || 'activity'))
+      : safeSlug(course?.name || 'activity'),
+    objectives: String(mergedData.objectives).split('\n').map((item) => item.trim()).filter(Boolean),
     status: form.dataset.id ? byId(state().publications, form.dataset.id)?.status : 'draft'
   });
   if (!result.ok) {
     toast(result.errors.join(' '), 'error');
     return;
   }
-  toast('Activity saved as a new revision.');
-  location.hash = `#/admin/activity/${result.publication.id}/edit`;
+  clearWizardDraft(draftKey);
+  sessionStorage.setItem(`activity-saved-${result.publication.id}`, '1');
+  toast('Activity saved.');
+  location.hash = `#/admin/activity/${result.publication.id}/edit/6`;
 }
 
 function exportReport(publicationId) {
@@ -716,6 +992,7 @@ document.addEventListener('submit', (event) => {
   if (!form.reportValidity()) return;
 
   if (form.id === 'activity-form') {
+    if (Number(form.dataset.step) !== 6) return;
     submitActivityForm(form);
     return;
   }
@@ -730,9 +1007,10 @@ document.addEventListener('submit', (event) => {
     const context = activityContext(state(), form.dataset.id);
     const page = Number(form.dataset.page);
     const preview = form.dataset.preview === 'true';
+    const pages = evaluationPages(context, draft);
     if (preview) previewSession(form.dataset.id).draft = draft;
     else store.saveDraft(form.dataset.id, draft);
-    if (page < 4) {
+    if (page < pages.length - 1) {
       location.hash = learnerHref(context, `evaluation/${page + 1}`, preview);
       return;
     }
@@ -745,7 +1023,10 @@ document.addEventListener('submit', (event) => {
     };
     if (preview) previewSession(form.dataset.id).submission = response;
     else store.submitEvaluation(form.dataset.id, response);
-    toast('Evaluation submitted.');
+    const nextMessage = ACTIVITY_TYPES[context.publication.activityType].requiresTest
+      ? 'Thank you. Next: take the knowledge check.'
+      : 'Thank you. Next: confirm attendance.';
+    toast(nextMessage);
     location.hash = learnerHref(context, ACTIVITY_TYPES[context.publication.activityType].requiresTest ? 'test' : 'attendance', preview);
     return;
   }
@@ -763,9 +1044,11 @@ document.addEventListener('submit', (event) => {
   }
   if (form.id === 'test-form') {
     const context = activityContext(state(), form.dataset.id);
-    const answers = Object.fromEntries(new FormData(form));
-    const result = scoreTest(context.testTemplate, answers);
     const preview = form.dataset.preview === 'true';
+    const stored = testAnswers(form.dataset.id, preview);
+    const answers = { ...stored, ...Object.fromEntries(new FormData(form)) };
+    const result = scoreTest(context.testTemplate, answers);
+    clearTestAnswers(form.dataset.id, preview);
     if (preview) previewSession(form.dataset.id).attempts.push({ ...result, answers });
     else store.recordAttempt(form.dataset.id, result, answers);
     if (result.passed) {
@@ -775,7 +1058,7 @@ document.addEventListener('submit', (event) => {
       location.hash = learnerHref(context, 'certificate', preview);
     } else {
       toast(`${result.percent}% — 80% is required.`, 'error');
-      render();
+      location.hash = learnerHref(context, 'test/0', preview);
     }
   }
 });
@@ -805,10 +1088,52 @@ document.addEventListener('click', async (event) => {
   const { action, id, value } = target.dataset;
   if (action === 'menu') {
     document.body.classList.toggle('menu-open');
+  } else if (action === 'menu-close') {
+    document.body.classList.remove('menu-open');
+  } else if (action === 'toggle-more-filters') {
+    document.querySelector('.report-filters')?.classList.toggle('open');
+    document.querySelector('.report-filters')?.classList.toggle('collapsed');
+  } else if (action === 'eval-prev') {
+    const form = document.querySelector('#learner-evaluation');
+    if (!form) return;
+    const draft = collectEvaluation(form);
+    const preview = form.dataset.preview === 'true';
+    if (preview) previewSession(form.dataset.id).draft = draft;
+    else store.saveDraft(form.dataset.id, draft);
+    const context = activityContext(state(), form.dataset.id);
+    const page = Number(form.dataset.page);
+    if (page > 0) location.hash = learnerHref(context, `evaluation/${page - 1}`, preview);
+    else location.hash = learnerHref(context, '', preview);
+  } else if (action === 'wizard-next' || action === 'wizard-prev' || action === 'wizard-goto') {
+    const form = document.querySelector('#activity-form');
+    if (!form) return;
+    if (action === 'wizard-next' && !form.reportValidity()) return;
+    const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
+    const draft = loadWizardDraft(draftKey);
+    const formData = new FormData(form);
+    for (const [key, value] of formData.entries()) draft[key] = value;
+    saveWizardDraft(draftKey, draft);
+    const activityType = draft.activityType || formData.get('activityType') || 'live';
+    const currentStep = Number(form.dataset.step);
+    let targetStep = currentStep;
+    if (action === 'wizard-next') targetStep = wizardNextStep(currentStep, activityType);
+    else if (action === 'wizard-prev') targetStep = wizardPrevStep(currentStep, activityType);
+    else targetStep = Number(target.dataset.step) || 1;
+    const pubId = form.dataset.id || 'new';
+    location.hash = `#/admin/activity/${pubId}/edit/${targetStep}`;
+  } else if (action === 'test-next') {
+    const form = document.querySelector('#test-form');
+    if (!form || !form.reportValidity()) return;
+    const context = activityContext(state(), form.dataset.id);
+    const preview = form.dataset.preview === 'true';
+    const qIndex = Number(form.dataset.question) || 0;
+    const answers = { ...testAnswers(form.dataset.id, preview), ...Object.fromEntries(new FormData(form)) };
+    saveTestAnswers(form.dataset.id, preview, answers);
+    location.hash = learnerHref(context, `test/${qIndex + 1}`, preview);
   } else if (action === 'duplicate-publication') {
     const duplicate = store.duplicatePublication(id);
     toast('Activity duplicated as a draft.');
-    location.hash = `#/admin/activity/${duplicate.id}/edit`;
+    location.hash = `#/admin/activity/${duplicate.id}/edit/1`;
   } else if (action === 'duplicate-template') {
     const duplicate = store.duplicateEvaluationTemplate(id);
     toast('Template duplicated.');
