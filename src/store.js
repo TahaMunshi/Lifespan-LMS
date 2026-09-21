@@ -7,13 +7,13 @@ import {
   validatePublication
 } from './domain.js';
 
-const STORAGE_KEY = 'lifespan-lms-prototype-v3';
+const STORAGE_KEY = 'lifespan-lms-prototype-v4';
 let state = load();
 
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (saved?.schemaVersion === 3) return saved;
+    if (saved?.schemaVersion === 4) return saved;
   } catch {
     // Fall through to a clean demo state.
   }

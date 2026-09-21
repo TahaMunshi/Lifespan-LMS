@@ -688,12 +688,60 @@ function adminReports(selectedId = '') {
 
 function adminCertificates() {
   const data = state();
-  const issued = data.certificates.map((certificate) => `
-    <article class="certificate-record"><div><span class="status published">Issued</span><h3>${escapeHtml([certificate.learner.firstName, certificate.learner.lastName].filter(Boolean).join(' '))}</h3><p>${escapeHtml(certificate.snapshot.courseName)} · ${escapeHtml(certificate.snapshot.moduleName)}</p></div><div><strong>${escapeHtml(certificate.number)}</strong><small>${new Date(certificate.issuedAt).toLocaleDateString()}</small>${routeLink(`learn/${byId(data.publications, certificate.publicationId)?.slug}/certificate`, 'View', 'text-action')}</div></article>`).join('');
+  const demoPublication = data.publications.find((item) => item.status === 'published') || data.publications[0];
+  const demoSlug = demoPublication?.slug || 'sensorimotor-live-2026';
+  const startLearner = routeLink(`learn/${demoSlug}`, 'Start learner flow', 'btn primary');
+  const issued = data.certificates.map((certificate) => {
+    const publication = byId(data.publications, certificate.publicationId);
+    const viewPath = publication?.status === 'published'
+      ? `learn/${publication.slug}/certificate`
+      : `preview/${certificate.publicationId}/certificate`;
+    return `
+    <article class="certificate-record">
+      <div>
+        <span class="status published">Issued</span>
+        <h3>${escapeHtml([certificate.learner.firstName, certificate.learner.lastName].filter(Boolean).join(' '))}</h3>
+        <p>${escapeHtml(certificate.snapshot.courseName)} · ${escapeHtml(certificate.snapshot.moduleName)}</p>
+      </div>
+      <div>
+        <strong>${escapeHtml(certificate.number)}</strong>
+        <small>${new Date(certificate.issuedAt).toLocaleDateString()}</small>
+        ${routeLink(viewPath, 'View certificate', 'btn secondary small')}
+      </div>
+    </article>`;
+  }).join('');
   const templateCards = data.templates.certificates.map((template) => `<article class="mini-template"><img src="${template.asset}" alt=""><div><strong>${escapeHtml(template.name)}</strong><span>${template.activityTypes.map((type) => ACTIVITY_TYPES[type].label).join(', ')}</span></div></article>`).join('');
+  const empty = emptyState(
+    'No certificates issued yet',
+    'A learner flow is the step-by-step path a participant takes: evaluation → attendance or knowledge check → certificate. Start one now and keep clicking Continue.',
+    startLearner
+  );
   const content = `
-    <section class="content-grid certificates-layout"><div class="content-card"><div class="section-heading"><div><h2>Issued certificates</h2><p>Generated only after the configured completion rules are met.</p></div></div>${issued || emptyState('No certificates issued yet', 'Complete a learner flow to create the first certificate.')}</div><aside class="content-card"><h2>Certificate templates</h2><div class="mini-template-list">${templateCards}</div></aside></section>`;
-  return adminShell('Certificates', 'Review issued certificates and available certificate designs.', content, 'certificates');
+    <section class="welcome-panel certificate-guide">
+      <div>
+        <p class="eyebrow">Try it yourself</p>
+        <h2>See how a learner earns a certificate</h2>
+        <p>Open a published activity as a learner. Ratings and answers are pre-filled — keep clicking the green Continue buttons until the certificate appears.</p>
+      </div>
+      ${startLearner}
+    </section>
+    <section class="content-grid certificates-layout">
+      <div class="content-card">
+        <div class="section-heading">
+          <div>
+            <h2>Issued certificates</h2>
+            <p>Certificates appear here after a learner finishes every required step.</p>
+          </div>
+          ${startLearner}
+        </div>
+        ${issued || empty}
+      </div>
+      <aside class="content-card">
+        <h2>Certificate templates</h2>
+        <div class="mini-template-list">${templateCards}</div>
+      </aside>
+    </section>`;
+  return adminShell('Certificates', 'View issued certificates or start a learner flow to earn one.', content, 'certificates', startLearner);
 }
 
 function learnerBase(context, content, options = {}) {

@@ -94,7 +94,7 @@ const testQuestions = [
 }));
 
 const baseState = {
-  schemaVersion: 3,
+  schemaVersion: 4,
   templates: {
     evaluations: [
       {
@@ -202,7 +202,36 @@ const baseState = {
   submissions: [],
   attempts: [],
   attendanceConfirmations: [],
-  certificates: [],
+  certificates: [
+    {
+      id: 'certificate-demo-live',
+      number: 'LLI-2026-004182',
+      publicationId: 'pub-sensorimotor-live',
+      issuedAt: '2026-09-14T16:30:00Z',
+      learner: {
+        firstName: 'Margaret',
+        lastName: 'Whitfield',
+        credential: 'LCSW',
+        email: 'margaret.whitfield@example.com',
+        license: 'LCSW-12345'
+      },
+      snapshot: {
+        publicationId: 'pub-sensorimotor-live',
+        revision: 1,
+        activityType: 'live',
+        courseName: 'Words are Not Enough: Sensorimotor Interventions for Suicidality',
+        versionName: 'Live Workshop',
+        cohortName: 'September 2026',
+        moduleName: 'Live Workshop',
+        presenters: ['Pat Ogden, PhD', 'Bonnie Goldstein, PhD'],
+        location: 'Los Angeles, CA',
+        creditHours: 6,
+        activityDates: ['2026-09-12', '2026-09-13'],
+        objectives: objectives.sensorimotor
+      },
+      templateId: 'cert-live-v1'
+    }
+  ],
   drafts: {}
 };
 
@@ -243,6 +272,35 @@ const reportSubmissions = Array.from({ length: 18 }, (_, index) => {
 });
 
 baseState.submissions = reportSubmissions;
+baseState.submissions.push({
+  id: 'demo-live-completion',
+  publicationId: 'pub-sensorimotor-live',
+  publicationRevision: 1,
+  submittedAt: '2026-09-14T15:00:00Z',
+  ratings: Object.fromEntries(ratingKeys.map((key) => [key, 5])),
+  objectiveRatings: objectives.sensorimotor.map(() => 5),
+  presenterRatings: Object.fromEntries(
+    baseState.cohorts[0].presenters.flatMap((_, presenterIndex) => (
+      STANDARD_QUESTIONS.presenter.map((question) => [`presenter.${presenterIndex}.${question.id}`, 5])
+    ))
+  ),
+  comments: { likedMost: 'Clear clinical examples and practical demonstrations.' },
+  learner: {
+    firstName: 'Margaret',
+    lastName: 'Whitfield',
+    credential: 'LCSW',
+    email: 'margaret.whitfield@example.com',
+    license: 'LCSW-12345'
+  },
+  snapshot: {
+    courseName: baseState.courses[0].name,
+    objectives: objectives.sensorimotor,
+    presenters: baseState.cohorts[0].presenters
+  }
+});
+baseState.attendanceConfirmations = [
+  { id: 'demo-attendance-live', publicationId: 'pub-sensorimotor-live', confirmedAt: '2026-09-14T16:00:00Z' }
+];
 
 export function createSeedState() {
   return structuredClone(baseState);
