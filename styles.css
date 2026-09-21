@@ -253,6 +253,8 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .answer-hint span{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--green-dark)}
 .answer-hint strong{font-size:18px;color:var(--navy)}
 .test-choice.is-correct{border-color:var(--green);background:var(--green-soft)}
+.mcq-question .goal-ref{margin:0 0 14px;color:var(--muted);font-size:15px}
+.mcq-question .test-choice{margin:10px 0}
 .section-title{
   margin:38px 0 18px;
   padding:14px 18px;

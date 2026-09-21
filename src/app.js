@@ -836,6 +836,63 @@ function ratingQuestion(name, question, value = '') {
   return `<fieldset class="question rating-question"><legend>${escapeHtml(text)}</legend><div class="star-scale">${scale.map(([number, label]) => `<label class="star-choice"><input type="radio" name="${escapeHtml(name)}" value="${number}" ${selected === number ? 'checked' : ''} required><span class="rating-label"><strong>${number}</strong>${escapeHtml(label)}</span><span class="star" aria-hidden="true">★</span></label>`).join('')}</div></fieldset>`;
 }
 
+function objectiveMcqFallback(objective, index) {
+  const correctAnswers = [
+    'Track breath, posture, and muscle tone as possible cues of hopelessness or despair.',
+    'Notice how bodily states can maintain depression and shape clinical work.',
+    'Use body-oriented interventions when talk alone is not enough.',
+    'Practice three sensorimotor interventions for suicidality-related affect.',
+    'Use mindfulness to support present-moment awareness alongside talk therapy.',
+    'Name secure, avoidant, ambivalent, and disorganized attachment patterns.',
+    'Link attachment history to current relationship and clinical presentation.',
+    'Assess adult clients with an attachment-informed lens.',
+    'Choose attachment-informed interventions when building a treatment plan.',
+    'Identify early signs of autonomic dysregulation in trauma work.',
+    'Stabilize and resource before deeper trauma processing.',
+    'Differentiate top-down cognitive work from bottom-up body-based work.',
+    'Build a phased trauma-informed plan with clear safety steps.'
+  ];
+  const correct = correctAnswers[index % correctAnswers.length];
+  const distractors = [
+    'Ignore body cues and focus only on paperwork.',
+    'Increase activation as quickly as possible in every session.',
+    'Skip consent and move straight to trauma processing.'
+  ];
+  return {
+    prompt: `Learning goal: ${objective}`,
+    options: [correct, ...distractors],
+    correctIndex: 0
+  };
+}
+
+function objectiveMcqQuestion(name, objective, index, context, draftValue = '') {
+  const fromTest = (context.testTemplate?.questions || [])
+    .filter((question) => Number(question.objectiveIndex) === index);
+  const source = fromTest[0]
+    ? {
+      prompt: fromTest[0].text,
+      options: fromTest[0].options,
+      correctIndex: Number(fromTest[0].correct)
+    }
+    : objectiveMcqFallback(objective, index);
+  const values = source.options.map((_, optionIndex) => (
+    optionIndex === source.correctIndex ? '5' : String(Math.max(1, optionIndex))
+  ));
+  const selected = draftValue === '' || draftValue == null ? '5' : String(draftValue);
+  const correctText = source.options[source.correctIndex];
+  return `
+    <fieldset class="question mcq-question">
+      <legend>${escapeHtml(source.prompt)}</legend>
+      <p class="goal-ref">Linked learning goal: ${escapeHtml(objective)}</p>
+      <div class="answer-hint"><span>Correct answer</span><strong>${escapeHtml(correctText)}</strong></div>
+      ${source.options.map((option, optionIndex) => `
+        <label class="test-choice ${optionIndex === source.correctIndex ? 'is-correct' : ''}">
+          <input type="radio" name="${escapeHtml(name)}" value="${values[optionIndex]}" ${selected === values[optionIndex] ? 'checked' : ''} required>
+          <span>${escapeHtml(option)}</span>
+        </label>`).join('')}
+    </fieldset>`;
+}
+
 function evaluationPages(context, draft) {
   const learnerDefaults = {
     firstName: 'Margaret',
@@ -857,8 +914,11 @@ function evaluationPages(context, draft) {
     },
     {
       title: 'Learning goals',
-      subtitle: 'Rate your ability to meet each learning goal.',
-      body: context.publication.objectives.map((objective, index) => ratingQuestion(`objective.${index}`, objective, draft.ratings?.[`objective.${index}`])).join('')
+      subtitle: 'Answer each question. Correct answers are shown and already selected.',
+      kind: 'mcq',
+      body: context.publication.objectives.map((objective, index) => (
+        objectiveMcqQuestion(`objective.${index}`, objective, index, context, draft.ratings?.[`objective.${index}`])
+      )).join('')
     },
     {
       title: 'Presenters',
@@ -895,7 +955,12 @@ function learnerEvaluation(context, pageIndex, preview = false) {
   const prevButton = currentIndex > 0
     ? `<button type="button" class="btn ghost" data-action="eval-prev">Previous</button>`
     : routeLink(preview ? `preview/${context.publication.id}` : `learn/${context.publication.slug}`, 'Back', 'btn ghost');
-  const content = `${namedSteps}${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${currentIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${currentIndex + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div>${currentIndex < pages.length - 1 ? '<p class="rating-help"><span aria-hidden="true">★</span> Ratings are pre-selected. Change any star you like, then continue.</p>' : ''}${page.body}</section><div class="form-navigation">${prevButton}<button class="btn primary" type="submit">${currentIndex === pages.length - 1 ? 'Submit evaluation' : 'Continue'}</button></div></form>`;
+  const help = page.kind === 'mcq'
+    ? '<p class="rating-help">Choose the best answer for each question. Correct answers are pre-selected so you can continue.</p>'
+    : currentIndex < pages.length - 1
+      ? '<p class="rating-help"><span aria-hidden="true">★</span> Ratings are pre-selected. Change any star you like, then continue.</p>'
+      : '';
+  const content = `${namedSteps}${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${currentIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${currentIndex + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div>${help}${page.body}</section><div class="form-navigation">${prevButton}<button class="btn primary" type="submit">${currentIndex === pages.length - 1 ? 'Submit evaluation' : 'Continue'}</button></div></form>`;
   return learnerBase(context, content, { preview, label: 'Evaluation' });
 }
 
