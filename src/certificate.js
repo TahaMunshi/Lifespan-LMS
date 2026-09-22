@@ -57,9 +57,18 @@ export async function renderCertificate(canvas, certificate, template) {
     ctx.fillText(String(text || ''), LOGICAL_WIDTH / 2, y, width);
   };
   blank(300, 65, 1066, 155);
-  const brandWidth = 1000;
-  const brandHeight = brandWidth * (brand.naturalHeight / brand.naturalWidth);
-  ctx.drawImage(brand, (LOGICAL_WIDTH - brandWidth) / 2, 105, brandWidth, brandHeight);
+  const maxBrandWidth = 680;
+  const maxBrandHeight = 118;
+  const aspect = brand.naturalHeight / Math.max(1, brand.naturalWidth);
+  let brandWidth = maxBrandWidth;
+  let brandHeight = brandWidth * aspect;
+  if (brandHeight > maxBrandHeight) {
+    brandHeight = maxBrandHeight;
+    brandWidth = brandHeight / aspect;
+  }
+  const brandX = (LOGICAL_WIDTH - brandWidth) / 2;
+  const brandY = 78 + (maxBrandHeight - brandHeight) / 2;
+  ctx.drawImage(brand, brandX, brandY, brandWidth, brandHeight);
 
   const snapshot = certificate.snapshot;
   const learnerName = [
