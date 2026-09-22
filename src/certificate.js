@@ -56,19 +56,21 @@ export async function renderCertificate(canvas, certificate, template) {
     ctx.font = `${size}px ${font}`;
     ctx.fillText(String(text || ''), LOGICAL_WIDTH / 2, y, width);
   };
-  blank(300, 65, 1066, 155);
-  const maxBrandWidth = 680;
-  const maxBrandHeight = 118;
+
+  // Wide banner logo: fit by width, clear the header plate, leave space before body text.
+  const isLive = template.activityTypes.includes('live');
+  const logoMaxWidth = 820;
+  const logoBandTop = 42;
   const aspect = brand.naturalHeight / Math.max(1, brand.naturalWidth);
-  let brandWidth = maxBrandWidth;
-  let brandHeight = brandWidth * aspect;
-  if (brandHeight > maxBrandHeight) {
-    brandHeight = maxBrandHeight;
-    brandWidth = brandHeight / aspect;
-  }
+  const targetHeight = Math.round(logoMaxWidth * aspect);
+  const logoBandBottom = logoBandTop + targetHeight + 24;
+  blank(190, logoBandTop, 1286, logoBandBottom - logoBandTop);
+  const brandWidth = logoMaxWidth;
+  const brandHeight = targetHeight;
   const brandX = (LOGICAL_WIDTH - brandWidth) / 2;
-  const brandY = 78 + (maxBrandHeight - brandHeight) / 2;
+  const brandY = logoBandTop + 12;
   ctx.drawImage(brand, brandX, brandY, brandWidth, brandHeight);
+  const contentStart = logoBandBottom + 32;
 
   const snapshot = certificate.snapshot;
   const learnerName = [
@@ -84,27 +86,29 @@ export async function renderCertificate(canvas, certificate, template) {
   });
   const presenterText = snapshot.presenters.join(' & ');
 
-  if (template.activityTypes.includes('live')) {
-    blank(205, 276, 1255, 112);
-    write(learnerName, 340, 46);
-    blank(205, 410, 1255, 113);
-    const titleY = wrapText(ctx, snapshot.courseName, 449, {
-      size: 32,
+  if (isLive) {
+    blank(205, contentStart - 10, 1255, 130);
+    write('This certifies that', contentStart + 22, 26, '#4a5560', 'Inter');
+    write(learnerName, contentStart + 82, 46);
+    const titleBandTop = contentStart + 140;
+    blank(205, titleBandTop, 1255, 130);
+    const titleY = wrapText(ctx, snapshot.courseName, titleBandTop + 42, {
+      size: 30,
       width: 1245,
-      lineHeight: 38,
+      lineHeight: 36,
       color: '#63a63b'
     });
-    wrapText(ctx, `${snapshot.moduleName} · ${presenterText}`, titleY + 38, {
-      size: 23,
+    wrapText(ctx, `${snapshot.moduleName} · ${presenterText}`, titleY + 34, {
+      size: 22,
       width: 1245,
-      lineHeight: 29,
+      lineHeight: 28,
       color: '#63a63b'
     });
-    blank(210, 718, 1248, 84);
+    blank(210, 740, 1248, 84);
     wrapText(
       ctx,
       `This activity meets the qualifications for ${snapshot.creditHours} hours of continuing education credit. Location: ${snapshot.location}.`,
-      750,
+      772,
       { size: 23, width: 1235, lineHeight: 31, color: '#171d18' }
     );
     blank(295, 930, 290, 55);
@@ -112,10 +116,14 @@ export async function renderCertificate(canvas, certificate, template) {
     ctx.fillStyle = '#171d18';
     ctx.fillText(completionDate, 415, 969, 290);
   } else {
-    blank(205, 467, 1255, 100);
-    write(learnerName, 528, 44);
-    blank(205, 590, 1255, 168);
-    const titleY = wrapText(ctx, snapshot.courseName, 622, {
+    blank(205, contentStart - 8, 1255, 78);
+    write('This certifies that', contentStart + 32, 26, '#4a5560', 'Inter');
+    const nameTop = contentStart + 86;
+    blank(205, nameTop, 1255, 100);
+    write(learnerName, nameTop + 62, 44);
+    const titleTop = nameTop + 120;
+    blank(205, titleTop, 1255, 168);
+    const titleY = wrapText(ctx, snapshot.courseName, titleTop + 48, {
       size: 30,
       width: 1180,
       lineHeight: 36,
