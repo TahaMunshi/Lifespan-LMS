@@ -193,7 +193,7 @@ function adminShell(title, subtitle, content, active = 'dashboard', actions = ''
       <div class="menu-backdrop" data-action="menu-close"></div>
       <aside class="admin-sidebar">
         <button class="sidebar-close" data-action="menu-close">Close</button>
-        <div class="admin-brand"><img src="assets/logo.png?v=2" alt="Lifespan Learning Institute"></div>
+        <div class="admin-brand"><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"></div>
         <nav aria-label="Administrator navigation">
           ${navigation.map(([id, label]) => `
             <a href="#/admin/${id}" class="${active === id ? 'active' : ''}">
@@ -750,7 +750,7 @@ function learnerBase(context, content, options = {}) {
   const base = preview ? `preview/${publication.id}` : `learn/${publication.slug}`;
   document.body.className = 'learner-page';
   return `
-    <header class="learner-header"><div><img src="assets/logo.png?v=2" alt="Lifespan Learning Institute"><span>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)} activity</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>
+    <header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)} activity</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>
     ${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}
     <main class="learner-main" id="main">
       <nav class="learner-breadcrumb">${routeLink(base, 'Activity overview')}<span>/</span><span>${escapeHtml(options.label || 'Details')}</span></nav>
@@ -816,7 +816,7 @@ function learnerLanding(context, preview = false) {
       </dl>
     </details>`;
   document.body.className = 'learner-page';
-  return `<header class="learner-header"><div><img src="assets/logo.png?v=2" alt="Lifespan Learning Institute"><span>Continuing education</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}<main class="learner-main" id="main">${content}</main>`;
+  return `<header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>Continuing education</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}<main class="learner-main" id="main">${content}</main>`;
 }
 
 const SCALE = [

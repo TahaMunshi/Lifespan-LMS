@@ -31,7 +31,7 @@ export async function renderCertificate(canvas, certificate, template) {
   const artwork = new Image();
   const brand = new Image();
   artwork.src = template.asset;
-  brand.src = 'assets/logo.png?v=2';
+  brand.src = 'assets/logo.png?v=3';
   await Promise.all([artwork.decode(), brand.decode()]);
   if (document.fonts?.ready) await document.fonts.ready;
 

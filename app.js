@@ -156,7 +156,7 @@ const steps = () => `
 const shell = (body) => `
   <header class="topbar">
     <div class="topbar-inner">
-      <img src="assets/logo.png" alt="Lifespan Learning Institute">
+      <img src="assets/logo.png?v=3" alt="Lifespan Learning Institute">
       <div class="meta">
         <span>Course evaluation</span>
         <button type="button" class="text-link" data-action="certificate">Preview certificate</button>
@@ -300,7 +300,7 @@ const pageCertificate = () => {
   return `
   <header class="topbar">
     <div class="topbar-inner">
-      <img src="assets/logo.png" alt="Lifespan Learning Institute">
+      <img src="assets/logo.png?v=3" alt="Lifespan Learning Institute">
       <div class="meta"><span>Certificate preview</span>80%+ completion achieved</div>
     </div>
   </header>
