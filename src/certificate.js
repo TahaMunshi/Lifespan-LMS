@@ -26,6 +26,17 @@ function wrapText(ctx, text, y, options = {}) {
   return y;
 }
 
+function fitBrand(brand, maxWidth, maxHeight) {
+  const aspect = brand.naturalHeight / Math.max(1, brand.naturalWidth);
+  let width = maxWidth;
+  let height = width * aspect;
+  if (height > maxHeight) {
+    height = maxHeight;
+    width = height / aspect;
+  }
+  return { width, height };
+}
+
 export async function renderCertificate(canvas, certificate, template) {
   if (!canvas || !certificate?.snapshot || !template) return false;
   const artwork = new Image();
@@ -57,20 +68,16 @@ export async function renderCertificate(canvas, certificate, template) {
     ctx.fillText(String(text || ''), LOGICAL_WIDTH / 2, y, width);
   };
 
-  // Wide banner logo: fit by width, clear the header plate, leave space before body text.
-  const isLive = template.activityTypes.includes('live');
-  const logoMaxWidth = 820;
-  const logoBandTop = 42;
-  const aspect = brand.naturalHeight / Math.max(1, brand.naturalWidth);
-  const targetHeight = Math.round(logoMaxWidth * aspect);
-  const logoBandBottom = logoBandTop + targetHeight + 24;
-  blank(190, logoBandTop, 1286, logoBandBottom - logoBandTop);
-  const brandWidth = logoMaxWidth;
-  const brandHeight = targetHeight;
-  const brandX = (LOGICAL_WIDTH - brandWidth) / 2;
-  const brandY = logoBandTop + 12;
-  ctx.drawImage(brand, brandX, brandY, brandWidth, brandHeight);
-  const contentStart = logoBandBottom + 32;
+  // Header plate only — stay above the name slot (y≈276) so nothing overlaps.
+  blank(250, 52, 1166, 210);
+  const { width: brandWidth, height: brandHeight } = fitBrand(brand, 980, 188);
+  ctx.drawImage(
+    brand,
+    (LOGICAL_WIDTH - brandWidth) / 2,
+    58 + (188 - brandHeight) / 2,
+    brandWidth,
+    brandHeight
+  );
 
   const snapshot = certificate.snapshot;
   const learnerName = [
@@ -86,29 +93,27 @@ export async function renderCertificate(canvas, certificate, template) {
   });
   const presenterText = snapshot.presenters.join(' & ');
 
-  if (isLive) {
-    blank(205, contentStart - 10, 1255, 130);
-    write('This certifies that', contentStart + 22, 26, '#4a5560', 'Inter');
-    write(learnerName, contentStart + 82, 46);
-    const titleBandTop = contentStart + 140;
-    blank(205, titleBandTop, 1255, 130);
-    const titleY = wrapText(ctx, snapshot.courseName, titleBandTop + 42, {
-      size: 30,
+  if (template.activityTypes.includes('live')) {
+    blank(205, 276, 1255, 112);
+    write(learnerName, 340, 46);
+    blank(205, 410, 1255, 113);
+    const titleY = wrapText(ctx, snapshot.courseName, 449, {
+      size: 32,
       width: 1245,
-      lineHeight: 36,
+      lineHeight: 38,
       color: '#63a63b'
     });
-    wrapText(ctx, `${snapshot.moduleName} · ${presenterText}`, titleY + 34, {
-      size: 22,
+    wrapText(ctx, `${snapshot.moduleName} · ${presenterText}`, titleY + 38, {
+      size: 23,
       width: 1245,
-      lineHeight: 28,
+      lineHeight: 29,
       color: '#63a63b'
     });
-    blank(210, 740, 1248, 84);
+    blank(210, 718, 1248, 84);
     wrapText(
       ctx,
       `This activity meets the qualifications for ${snapshot.creditHours} hours of continuing education credit. Location: ${snapshot.location}.`,
-      772,
+      750,
       { size: 23, width: 1235, lineHeight: 31, color: '#171d18' }
     );
     blank(295, 930, 290, 55);
@@ -116,14 +121,10 @@ export async function renderCertificate(canvas, certificate, template) {
     ctx.fillStyle = '#171d18';
     ctx.fillText(completionDate, 415, 969, 290);
   } else {
-    blank(205, contentStart - 8, 1255, 78);
-    write('This certifies that', contentStart + 32, 26, '#4a5560', 'Inter');
-    const nameTop = contentStart + 86;
-    blank(205, nameTop, 1255, 100);
-    write(learnerName, nameTop + 62, 44);
-    const titleTop = nameTop + 120;
-    blank(205, titleTop, 1255, 168);
-    const titleY = wrapText(ctx, snapshot.courseName, titleTop + 48, {
+    blank(205, 467, 1255, 100);
+    write(learnerName, 528, 44);
+    blank(205, 590, 1255, 168);
+    const titleY = wrapText(ctx, snapshot.courseName, 622, {
       size: 30,
       width: 1180,
       lineHeight: 36,
