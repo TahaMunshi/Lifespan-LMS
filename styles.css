@@ -670,21 +670,23 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .learner-page .btn.primary,.learner-page .btn.secondary{min-height:60px;font-size:19px;padding:16px 32px}
 .learner-page legend{font-size:18px}
 .learner-page .eval-named-steps span{font-size:15px;padding:10px 14px}
-.certificate-frame{background:#eef3f6;padding:12px;border-radius:12px}
-.certificate-document{width:100%;max-width:980px;margin:0 auto}
+.certificate-frame{background:#eef3f6;padding:12px;border-radius:12px;overflow:visible}
+#certificate-render{overflow:visible}
+.certificate-document{width:100%;max-width:980px;margin:0 auto;overflow:visible}
 .cert-sheet{
   background:#fff;
   border:8px solid #7699bd;
-  padding:clamp(20px,3vw,36px) clamp(22px,3.5vw,44px) clamp(18px,2.5vw,28px);
+  padding:clamp(20px,3vw,36px) clamp(22px,3.5vw,44px) clamp(22px,2.5vw,32px);
   color:#202d25;
   font-family:Georgia,"Times New Roman",serif;
   position:relative;
-  aspect-ratio:1666/1162;
   box-sizing:border-box;
   display:flex;
   flex-direction:column;
   align-items:center;
   text-align:center;
+  overflow:visible;
+  min-height:0;
 }
 .cert-header{margin:0 0 8px}
 .cert-logo{width:min(520px,88%);height:auto;display:block;margin:0 auto}
@@ -695,23 +697,49 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .cert-intro strong{font-weight:700}
 .cert-course{font-size:clamp(20px,2.4vw,30px);font-weight:700;margin:0 0 8px;line-height:1.25;max-width:92%}
 .cert-presenters,.cert-meta{font-size:clamp(16px,1.75vw,22px);margin:0 0 6px;line-height:1.35;max-width:92%}
+.cert-body-spacer{flex:1 1 auto;min-height:12px;width:100%}
 .cert-lower{
   width:100%;
-  margin-top:auto;
+  margin-top:clamp(16px,2vw,28px);
   display:grid;
-  grid-template-columns:minmax(0,1.15fr) minmax(220px,.85fr);
-  gap:clamp(12px,2vw,24px);
+  grid-template-columns:minmax(0,1fr) minmax(240px,320px);
+  gap:clamp(16px,2.5vw,28px);
   align-items:end;
   text-align:left;
   padding-top:clamp(10px,1.5vw,18px);
+  overflow:visible;
 }
 .cert-accreditation p{font-size:clamp(11px,1.05vw,14px);line-height:1.45;margin:0 0 10px;font-family:Georgia,serif}
 .cert-accreditation-em{font-style:italic}
-.cert-official{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:8px}
-.cert-seal{width:min(150px,36vw);height:auto}
-.cert-sign-block{display:flex;flex-direction:column;align-items:center;gap:4px}
-.cert-sign-label{font-family:Inter,Arial,sans-serif;font-size:13px;color:#202d25}
-.cert-sign{width:min(220px,50vw);height:auto}
+.cert-official{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  min-width:240px;
+  overflow:visible;
+  padding-bottom:4px;
+}
+.cert-seal{width:min(168px,100%);height:auto;display:block;object-fit:contain}
+.cert-sign-block{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:6px;
+  width:100%;
+  max-width:260px;
+  overflow:visible;
+}
+.cert-sign-label{font-family:Inter,Arial,sans-serif;font-size:14px;color:#202d25}
+.cert-sign{
+  width:100%;
+  max-width:260px;
+  height:auto;
+  display:block;
+  object-fit:contain;
+  object-position:center top;
+}
 .cert-footer{
   width:100%;
   margin-top:10px;

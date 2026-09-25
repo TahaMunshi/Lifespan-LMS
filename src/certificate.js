@@ -71,6 +71,7 @@ export function buildCertificateMarkup(certificate, template) {
         <p class="cert-course">${courseName}</p>
         <p class="cert-presenters">${presenterText}</p>
         ${scheduleBlock}
+        <div class="cert-body-spacer" aria-hidden="true"></div>
         <div class="cert-lower">
           <div class="cert-accreditation">
             <p>Lifespan Learning Institute is approved by the California Association of Marriage and Family Therapists to sponsor continuing education for LMFTs, LCSWs, LPCCs, &amp; LEPs. Lifespan Learning Institute maintains responsibility for this program/course and its content. (Provider # 050085)</p>
@@ -92,17 +93,23 @@ export function buildCertificateMarkup(certificate, template) {
 
 async function captureCertificateNode(node) {
   const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm');
-  await Promise.all([...node.querySelectorAll('img')].map((img) => (
+  const sheet = node.querySelector('.cert-sheet') || node;
+  await Promise.all([...sheet.querySelectorAll('img')].map((img) => (
     img.complete ? Promise.resolve() : new Promise((resolve) => {
       img.onload = resolve;
       img.onerror = resolve;
     })
   )));
-  return html2canvas(node, {
-    scale: Math.max(2, window.devicePixelRatio || 2),
+  const scale = Math.max(2, window.devicePixelRatio || 2);
+  return html2canvas(sheet, {
+    scale,
     backgroundColor: '#ffffff',
     useCORS: true,
-    logging: false
+    logging: false,
+    width: sheet.scrollWidth,
+    height: sheet.scrollHeight,
+    windowWidth: sheet.scrollWidth,
+    windowHeight: sheet.scrollHeight
   });
 }
 
