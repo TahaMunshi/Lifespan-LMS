@@ -1,62 +1,13 @@
-const LOGICAL_WIDTH = 1666;
-const LOGICAL_HEIGHT = 1162;
 const FRAME_COLOR = '#7699bd';
-const INK = '#202d25';
-const SLATE = '#345469';
 
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  let line = '';
-  const lines = [];
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = test;
-    }
-  }
-  if (line) lines.push(line);
-  let currentY = y;
-  for (const item of lines) {
-    ctx.fillText(item, x, currentY, maxWidth);
-    currentY += lineHeight;
-  }
-  return currentY;
-}
-
-function wrapCentered(ctx, text, y, maxWidth, lineHeight) {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
-  let line = '';
-  const lines = [];
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else {
-      line = test;
-    }
-  }
-  if (line) lines.push(line);
-  let currentY = y;
-  for (const item of lines) {
-    ctx.fillText(item, LOGICAL_WIDTH / 2, currentY, maxWidth);
-    currentY += lineHeight;
-  }
-  return currentY;
-}
-
-function fitBrand(brand, maxWidth, maxHeight) {
-  const aspect = brand.naturalHeight / Math.max(1, brand.naturalWidth);
-  let width = maxWidth;
-  let height = width * aspect;
-  if (height > maxHeight) {
-    height = maxHeight;
-    width = height / aspect;
-  }
-  return { width, height };
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[character]));
 }
 
 function formatLongDate(value) {
@@ -73,161 +24,99 @@ function formatDateRange(dates) {
   return `${clean[0]} – ${clean[1]}`;
 }
 
-function drawFrame(ctx) {
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
-  const inset = 28;
-  ctx.strokeStyle = FRAME_COLOR;
-  ctx.lineWidth = 10;
-  ctx.strokeRect(inset, inset, LOGICAL_WIDTH - inset * 2, LOGICAL_HEIGHT - inset * 2);
+function formatHours(hours) {
+  const value = Number(hours);
+  if (!Number.isFinite(value)) return '0';
+  return Number.isInteger(value) ? String(value) : String(value);
 }
 
-function drawCamftSeal(ctx, x, y, radius) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.beginPath();
-  ctx.arc(0, 0, radius, 0, Math.PI * 2);
-  ctx.fillStyle = '#ffffff';
-  ctx.fill();
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = FRAME_COLOR;
-  ctx.stroke();
-  ctx.fillStyle = SLATE;
-  ctx.font = '700 22px Inter';
-  ctx.textAlign = 'center';
-  ctx.fillText('CAMFT', 0, -6);
-  ctx.font = '600 11px Inter';
-  const ring = 'APPROVED CONTINUING EDUCATION PROVIDER';
-  ctx.font = '600 10px Inter';
-  wrapCentered(ctx, ring, radius * 0.35, radius * 1.4, 14);
-  ctx.restore();
+function formatLearnerName(learner) {
+  const name = [learner?.firstName, learner?.lastName].filter(Boolean).join(' ').trim();
+  const credential = String(learner?.credential || '').trim();
+  if (!name) return 'Learner name';
+  return credential ? `${name}, ${credential}` : name;
 }
 
-function drawFooter(ctx) {
-  ctx.textAlign = 'center';
-  ctx.fillStyle = INK;
-  ctx.font = '17px Inter';
-  ctx.fillText(
-    'Lifespan Learning Institute • 10825 Ashby Avenue • Los Angeles, CA 90066 • 310.474.2505 • lifespanlearn.org',
-    LOGICAL_WIDTH / 2,
-    LOGICAL_HEIGHT - 52,
-    1500
-  );
-}
-
-function drawAccreditation(ctx, hours, y) {
-  ctx.textAlign = 'left';
-  ctx.fillStyle = INK;
-  ctx.font = '17px Georgia';
-  wrapText(
-    ctx,
-    'Lifespan Learning Institute is approved by the California Association of Marriage and Family Therapists to sponsor continuing education for LMFTs, LCSWs, LPCCs, & LEPs. Lifespan Learning Institute maintains responsibility for this program/course and its content. (Provider # 050085)',
-    120,
-    y,
-    820,
-    24
-  );
-  const nextY = y + 92;
-  ctx.font = 'italic 17px Georgia';
-  wrapText(
-    ctx,
-    `This course meets the qualifications for ${hours} hours of continuing education credit for LMFTs, LCSWs, LPCCs, and/or LEPs as required by the California Board of Behavioral Sciences.`,
-    120,
-    nextY,
-    820,
-    24
-  );
-}
-
-function drawSignature(ctx) {
-  ctx.textAlign = 'center';
-  ctx.fillStyle = INK;
-  ctx.font = '16px Inter';
-  ctx.fillText('Authorized by', 1280, 930);
-  ctx.font = 'italic 28px Georgia';
-  ctx.fillText('Bonnie Goldstein', 1280, 968);
-}
-
-export async function renderCertificate(canvas, certificate, template) {
-  if (!canvas || !certificate?.snapshot || !template) return false;
-  const brand = new Image();
-  brand.src = 'assets/logo.png?v=3';
-  await brand.decode();
-  if (document.fonts?.ready) await document.fonts.ready;
-
-  const scale = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
-  canvas.width = Math.round(LOGICAL_WIDTH * scale);
-  canvas.height = Math.round(LOGICAL_HEIGHT * scale);
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-
-  drawFrame(ctx);
-  ctx.textAlign = 'center';
-
-  const { width: brandWidth, height: brandHeight } = fitBrand(brand, 720, 120);
-  ctx.drawImage(brand, (LOGICAL_WIDTH - brandWidth) / 2, 72, brandWidth, brandHeight);
-
+export function buildCertificateMarkup(certificate, template) {
+  if (!certificate?.snapshot || !template) return '';
   const snapshot = certificate.snapshot;
-  const hours = snapshot.creditHours ?? 0;
-  const learnerName = [
-    certificate.learner?.firstName,
-    certificate.learner?.lastName,
-    certificate.learner?.credential
-  ].filter(Boolean).join(', ').replace(/, ([^,]+)$/, ', $1') || 'Learner Name';
-  const license = certificate.learner?.license || 'License #';
-  const presenterText = (snapshot.presenters || []).join(' & ') || 'Presenter name(s)';
-  const cosponsor = snapshot.cosponsor || 'Sensorimotor Psychotherapy Institute';
+  const hours = formatHours(snapshot.creditHours ?? 0);
+  const learnerName = formatLearnerName(certificate.learner);
+  const license = escapeHtml(certificate.learner?.license || 'License #');
+  const presenterText = escapeHtml((snapshot.presenters || []).join(' & ') || 'Presenter name(s)');
+  const cosponsor = escapeHtml(snapshot.cosponsor || 'Sensorimotor Psychotherapy Institute');
   const completionDate = formatLongDate(certificate.issuedAt?.slice(0, 10) || new Date().toISOString());
-  const activityDates = formatDateRange(snapshot.activityDates);
+  const activityDates = escapeHtml(formatDateRange(snapshot.activityDates));
+  const courseName = escapeHtml(snapshot.courseName || 'Course Title');
   const isLive = template.activityTypes?.includes('live');
-
-  ctx.fillStyle = INK;
-  ctx.font = '22px Georgia';
-  let y = 230;
-  ctx.fillText('This certifies that', LOGICAL_WIDTH / 2, y);
-  y += 48;
-  ctx.font = '700 34px Georgia';
-  ctx.fillText(learnerName, LOGICAL_WIDTH / 2, y, 1300);
-  y += 44;
-  ctx.font = '24px Georgia';
-  ctx.fillText(license, LOGICAL_WIDTH / 2, y);
-  y += 52;
-
-  ctx.font = '22px Georgia';
   const activityLabel = isLive ? 'Live' : 'Home Study';
-  const intro = `has successfully completed ${hours} hours of continuing education credit in a ${activityLabel} activity cosponsored by ${cosponsor} and Lifespan Learning Institute`;
-  y = wrapCentered(ctx, intro, y, 1180, 30) + 8;
+  const locationLine = snapshot.location
+    ? `Location: ${escapeHtml(snapshot.location)}`
+    : 'Location: (Place or Online)';
 
-  ctx.font = '700 28px Georgia';
-  y = wrapCentered(ctx, snapshot.courseName || 'Course Title', y + 16, 1180, 34) + 6;
-  ctx.font = '24px Georgia';
-  y = wrapCentered(ctx, presenterText, y + 8, 1180, 30) + 10;
+  const scheduleBlock = isLive
+    ? `<p class="cert-meta">${activityDates}</p><p class="cert-meta">${locationLine}</p>`
+    : `<p class="cert-meta">recorded on ${activityDates}</p><p class="cert-meta">Home Study completed: ${escapeHtml(completionDate)}</p>`;
 
-  if (isLive) {
-    y = wrapCentered(ctx, activityDates, y + 6, 1180, 28) + 6;
-    const location = snapshot.location ? `Location: ${snapshot.location}` : 'Location: (Place or Online)';
-    wrapCentered(ctx, location, y + 6, 1180, 28);
-  } else {
-    y = wrapCentered(ctx, `recorded on ${activityDates}`, y + 6, 1180, 28) + 6;
-    wrapCentered(ctx, `Home Study completed: ${completionDate}`, y + 6, 1180, 28);
-  }
+  return `
+    <article class="certificate-document" aria-label="Certificate of completion">
+      <div class="cert-sheet">
+        <header class="cert-header">
+          <img class="cert-logo" src="assets/logo.png?v=4" alt="Lifespan Learning Institute">
+        </header>
+        <p class="cert-lead">This certifies that</p>
+        <p class="cert-name">${escapeHtml(learnerName)}</p>
+        <p class="cert-license">${license}</p>
+        <p class="cert-intro">has successfully completed <strong>${escapeHtml(hours)} hours</strong> of continuing education credit in a ${activityLabel} activity cosponsored by ${cosponsor} and Lifespan Learning Institute</p>
+        <p class="cert-course">${courseName}</p>
+        <p class="cert-presenters">${presenterText}</p>
+        ${scheduleBlock}
+        <div class="cert-lower">
+          <div class="cert-accreditation">
+            <p>Lifespan Learning Institute is approved by the California Association of Marriage and Family Therapists to sponsor continuing education for LMFTs, LCSWs, LPCCs, &amp; LEPs. Lifespan Learning Institute maintains responsibility for this program/course and its content. (Provider # 050085)</p>
+            <p class="cert-accreditation-em"><em>This course meets the qualifications for ${escapeHtml(hours)} hours of continuing education credit for LMFTs, LCSWs, LPCCs, and/or LEPs as required by the California Board of Behavioral Sciences.</em></p>
+          </div>
+          <div class="cert-official">
+            <img class="cert-seal" src="assets/certificate-camft-seal.png" alt="CAMFT approved continuing education provider">
+            <div class="cert-sign-block">
+              <span class="cert-sign-label">Authorized by</span>
+              <img class="cert-sign" src="assets/certificate-signature.png" alt="Signature of Bonnie Goldstein">
+            </div>
+          </div>
+        </div>
+        <footer class="cert-footer">Lifespan Learning Institute • 10825 Ashby Avenue • Los Angeles, CA 90066 • 310.474.2505 • lifespanlearn.org</footer>
+        <span class="cert-number">${escapeHtml(certificate.number)}</span>
+      </div>
+    </article>`;
+}
 
-  drawAccreditation(ctx, hours, 720);
-  drawCamftSeal(ctx, 1280, 790, 78);
-  drawSignature(ctx);
-  drawFooter(ctx);
+async function captureCertificateNode(node) {
+  const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm');
+  await Promise.all([...node.querySelectorAll('img')].map((img) => (
+    img.complete ? Promise.resolve() : new Promise((resolve) => {
+      img.onload = resolve;
+      img.onerror = resolve;
+    })
+  )));
+  return html2canvas(node, {
+    scale: Math.max(2, window.devicePixelRatio || 2),
+    backgroundColor: '#ffffff',
+    useCORS: true,
+    logging: false
+  });
+}
 
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#6b7280';
-  ctx.font = '13px Inter';
-  ctx.fillText(certificate.number, LOGICAL_WIDTH - 48, LOGICAL_HEIGHT - 78);
-
+export async function renderCertificate(target, certificate, template) {
+  if (!target || !certificate?.snapshot || !template) return false;
+  target.innerHTML = buildCertificateMarkup(certificate, template);
+  target.dataset.ready = 'true';
   return true;
 }
 
-export function downloadCertificatePdf(canvas, filename) {
+export async function downloadCertificatePdf(mount, filename) {
+  if (!mount || mount.dataset.ready !== 'true') return false;
+  const node = mount.querySelector('.certificate-document') || mount;
+  const canvas = await captureCertificateNode(node);
   const imageBytes = Uint8Array.from(
     atob(canvas.toDataURL('image/jpeg', 0.96).split(',')[1]),
     (character) => character.charCodeAt(0)
@@ -268,4 +157,7 @@ export function downloadCertificatePdf(canvas, filename) {
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 500);
+  return true;
 }
+
+export { FRAME_COLOR };

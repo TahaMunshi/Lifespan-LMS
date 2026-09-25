@@ -1083,15 +1083,15 @@ function learnerCertificate(context, preview = false) {
       : store.issueCertificate(context.publication.id, learner);
     if (preview) session.certificate = certificate;
   }
-  const content = `<section class="certificate-view"><div class="completion-banner success-large"><span>Congratulations</span><strong>Your certificate is ready</strong><p>${escapeHtml(context.course.name)} · ${context.module.creditHours} credit hours</p></div><div class="certificate-frame"><canvas id="certificate-canvas" width="1666" height="1162" aria-label="Certificate for ${escapeHtml(certificate.learner.firstName)} ${escapeHtml(certificate.learner.lastName)}"></canvas></div><div class="certificate-actions oversized"><button class="btn primary" data-action="download-certificate" data-id="${certificate.id}">Download certificate</button><button class="btn secondary" data-action="print-certificate">Print certificate</button></div><dl class="certificate-details minimal"><div><dt>Certificate number</dt><dd>${escapeHtml(certificate.number)}</dd></div><div><dt>Issued</dt><dd>${new Date(certificate.issuedAt).toLocaleDateString()}</dd></div></dl></section>`;
+  const content = `<section class="certificate-view"><div class="completion-banner success-large"><span>Congratulations</span><strong>Your certificate is ready</strong><p>${escapeHtml(context.course.name)} · ${context.module.creditHours} credit hours</p></div><div class="certificate-frame"><div id="certificate-render"></div></div><div class="certificate-actions oversized"><button class="btn primary" data-action="download-certificate" data-id="${certificate.id}">Download certificate</button><button class="btn secondary" data-action="print-certificate">Print certificate</button></div><dl class="certificate-details minimal"><div><dt>Certificate number</dt><dd>${escapeHtml(certificate.number)}</dd></div><div><dt>Issued</dt><dd>${new Date(certificate.issuedAt).toLocaleDateString()}</dd></div></dl></section>`;
   const html = learnerBase(context, content, { preview, label: 'Certificate', hideCourse: true });
   setTimeout(async () => {
-    const canvas = document.querySelector('#certificate-canvas');
+    const mount = document.querySelector('#certificate-render');
     const template = byId(state().templates.certificates, certificate.templateId);
     try {
-      certificateReady = await renderCertificate(canvas, certificate, template);
+      certificateReady = await renderCertificate(mount, certificate, template);
     } catch {
-      toast('Certificate artwork could not be rendered.', 'error');
+      toast('Certificate could not be rendered.', 'error');
     }
   });
   return html;
@@ -1490,12 +1490,16 @@ document.addEventListener('click', async (event) => {
   } else if (action === 'download-certificate') {
     const certificate = byId(state().certificates, id)
       || [...previewSessions.values()].map((session) => session.certificate).find((item) => item?.id === id);
-    const canvas = document.querySelector('#certificate-canvas');
-    if (!certificateReady || !canvas) {
+    const mount = document.querySelector('#certificate-render');
+    if (!certificateReady || !mount) {
       toast('Certificate is still rendering.', 'error');
       return;
     }
-    downloadCertificatePdf(canvas, `${certificate.number}.pdf`);
+    try {
+      await downloadCertificatePdf(mount, `${certificate.number}.pdf`);
+    } catch {
+      toast('Could not create the PDF. Try Print instead.', 'error');
+    }
     toast('Certificate downloaded.');
   }
 });
