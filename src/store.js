@@ -7,13 +7,13 @@ import {
   validatePublication
 } from './domain.js';
 
-const STORAGE_KEY = 'lifespan-lms-prototype-v4';
+const STORAGE_KEY = 'lifespan-lms-prototype-v5';
 let state = load();
 
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (saved?.schemaVersion === 4) return saved;
+    if (saved?.schemaVersion === 5) return saved;
   } catch {
     // Fall through to a clean demo state.
   }
@@ -110,6 +110,33 @@ export const store = {
     template.version += 1;
     persist();
     return true;
+  },
+
+  saveTestTemplate(templateId, input) {
+    const template = state.templates.tests.find((item) => item.id === templateId);
+    if (!template) return { ok: false, errors: ['Test template not found.'] };
+    if (input.name?.trim()) template.name = input.name.trim();
+    if (input.passPercent != null) template.passPercent = Number(input.passPercent);
+    if (input.maxAttempts != null) template.maxAttempts = Number(input.maxAttempts);
+    if (Array.isArray(input.questions)) template.questions = input.questions;
+    template.version = (template.version || 1) + 1;
+    persist();
+    return { ok: true, template };
+  },
+
+  duplicateTestTemplate(templateId) {
+    const source = state.templates.tests.find((item) => item.id === templateId);
+    if (!source) return null;
+    const duplicate = {
+      ...structuredClone(source),
+      id: uid('test'),
+      name: `${source.name} — Copy`,
+      version: 1,
+      duplicatedFrom: source.id
+    };
+    state.templates.tests.push(duplicate);
+    persist();
+    return duplicate;
   },
 
   togglePublication(publicationId) {

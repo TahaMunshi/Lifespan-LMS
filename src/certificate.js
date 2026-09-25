@@ -1,29 +1,51 @@
 const LOGICAL_WIDTH = 1666;
 const LOGICAL_HEIGHT = 1162;
+const FRAME_COLOR = '#7699bd';
+const INK = '#202d25';
+const SLATE = '#345469';
 
-function wrapText(ctx, text, y, options = {}) {
-  const {
-    size = 26,
-    width = 1200,
-    lineHeight = 34,
-    color = '#202d25',
-    font = 'Georgia'
-  } = options;
-  ctx.font = `${size}px ${font}`;
-  ctx.fillStyle = color;
-  let current = '';
-  for (const word of String(text || '').split(' ')) {
-    const next = `${current}${word} `;
-    if (ctx.measureText(next).width > width && current) {
-      ctx.fillText(current.trim(), LOGICAL_WIDTH / 2, y);
-      y += lineHeight;
-      current = `${word} `;
+function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  let line = '';
+  const lines = [];
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
     } else {
-      current = next;
+      line = test;
     }
   }
-  if (current) ctx.fillText(current.trim(), LOGICAL_WIDTH / 2, y);
-  return y;
+  if (line) lines.push(line);
+  let currentY = y;
+  for (const item of lines) {
+    ctx.fillText(item, x, currentY, maxWidth);
+    currentY += lineHeight;
+  }
+  return currentY;
+}
+
+function wrapCentered(ctx, text, y, maxWidth, lineHeight) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  let line = '';
+  const lines = [];
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  let currentY = y;
+  for (const item of lines) {
+    ctx.fillText(item, LOGICAL_WIDTH / 2, currentY, maxWidth);
+    currentY += lineHeight;
+  }
+  return currentY;
 }
 
 function fitBrand(brand, maxWidth, maxHeight) {
@@ -37,13 +59,100 @@ function fitBrand(brand, maxWidth, maxHeight) {
   return { width, height };
 }
 
+function formatLongDate(value) {
+  if (!value) return '';
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00`);
+  if (!Number.isFinite(date.getTime())) return String(value);
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateRange(dates) {
+  const clean = (dates || []).filter(Boolean).map((item) => formatLongDate(item));
+  if (!clean.length) return 'Date not recorded';
+  if (clean.length === 1 || clean[0] === clean[1]) return clean[0];
+  return `${clean[0]} – ${clean[1]}`;
+}
+
+function drawFrame(ctx) {
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+  const inset = 28;
+  ctx.strokeStyle = FRAME_COLOR;
+  ctx.lineWidth = 10;
+  ctx.strokeRect(inset, inset, LOGICAL_WIDTH - inset * 2, LOGICAL_HEIGHT - inset * 2);
+}
+
+function drawCamftSeal(ctx, x, y, radius) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.arc(0, 0, radius, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = FRAME_COLOR;
+  ctx.stroke();
+  ctx.fillStyle = SLATE;
+  ctx.font = '700 22px Inter';
+  ctx.textAlign = 'center';
+  ctx.fillText('CAMFT', 0, -6);
+  ctx.font = '600 11px Inter';
+  const ring = 'APPROVED CONTINUING EDUCATION PROVIDER';
+  ctx.font = '600 10px Inter';
+  wrapCentered(ctx, ring, radius * 0.35, radius * 1.4, 14);
+  ctx.restore();
+}
+
+function drawFooter(ctx) {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INK;
+  ctx.font = '17px Inter';
+  ctx.fillText(
+    'Lifespan Learning Institute • 10825 Ashby Avenue • Los Angeles, CA 90066 • 310.474.2505 • lifespanlearn.org',
+    LOGICAL_WIDTH / 2,
+    LOGICAL_HEIGHT - 52,
+    1500
+  );
+}
+
+function drawAccreditation(ctx, hours, y) {
+  ctx.textAlign = 'left';
+  ctx.fillStyle = INK;
+  ctx.font = '17px Georgia';
+  wrapText(
+    ctx,
+    'Lifespan Learning Institute is approved by the California Association of Marriage and Family Therapists to sponsor continuing education for LMFTs, LCSWs, LPCCs, & LEPs. Lifespan Learning Institute maintains responsibility for this program/course and its content. (Provider # 050085)',
+    120,
+    y,
+    820,
+    24
+  );
+  const nextY = y + 92;
+  ctx.font = 'italic 17px Georgia';
+  wrapText(
+    ctx,
+    `This course meets the qualifications for ${hours} hours of continuing education credit for LMFTs, LCSWs, LPCCs, and/or LEPs as required by the California Board of Behavioral Sciences.`,
+    120,
+    nextY,
+    820,
+    24
+  );
+}
+
+function drawSignature(ctx) {
+  ctx.textAlign = 'center';
+  ctx.fillStyle = INK;
+  ctx.font = '16px Inter';
+  ctx.fillText('Authorized by', 1280, 930);
+  ctx.font = 'italic 28px Georgia';
+  ctx.fillText('Bonnie Goldstein', 1280, 968);
+}
+
 export async function renderCertificate(canvas, certificate, template) {
   if (!canvas || !certificate?.snapshot || !template) return false;
-  const artwork = new Image();
   const brand = new Image();
-  artwork.src = template.asset;
   brand.src = 'assets/logo.png?v=3';
-  await Promise.all([artwork.decode(), brand.decode()]);
+  await brand.decode();
   if (document.fonts?.ready) await document.fonts.ready;
 
   const scale = Math.max(2, Math.min(3, window.devicePixelRatio || 1));
@@ -53,102 +162,68 @@ export async function renderCertificate(canvas, certificate, template) {
   ctx.setTransform(scale, 0, 0, scale, 0, 0);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(artwork, 0, 0, LOGICAL_WIDTH, LOGICAL_HEIGHT);
+
+  drawFrame(ctx);
   ctx.textAlign = 'center';
 
-  const sample = ctx.getImageData(Math.round(200 * scale), Math.round(200 * scale), 1, 1).data;
-  const background = `rgb(${sample[0]},${sample[1]},${sample[2]})`;
-  const blank = (x, y, width, height) => {
-    ctx.fillStyle = background;
-    ctx.fillRect(x, y, width, height);
-  };
-  const write = (text, y, size = 28, color = '#202d25', font = 'Georgia', width = 1245) => {
-    ctx.fillStyle = color;
-    ctx.font = `${size}px ${font}`;
-    ctx.fillText(String(text || ''), LOGICAL_WIDTH / 2, y, width);
-  };
-
-  // Header plate only — stay above the name slot (y≈276) so nothing overlaps.
-  blank(250, 52, 1166, 210);
-  const { width: brandWidth, height: brandHeight } = fitBrand(brand, 980, 188);
-  ctx.drawImage(
-    brand,
-    (LOGICAL_WIDTH - brandWidth) / 2,
-    58 + (188 - brandHeight) / 2,
-    brandWidth,
-    brandHeight
-  );
+  const { width: brandWidth, height: brandHeight } = fitBrand(brand, 720, 120);
+  ctx.drawImage(brand, (LOGICAL_WIDTH - brandWidth) / 2, 72, brandWidth, brandHeight);
 
   const snapshot = certificate.snapshot;
+  const hours = snapshot.creditHours ?? 0;
   const learnerName = [
-    certificate.learner?.title,
     certificate.learner?.firstName,
     certificate.learner?.lastName,
     certificate.learner?.credential
-  ].filter(Boolean).join(' ') || 'Sample Learner';
-  const completionDate = new Date(certificate.issuedAt).toLocaleDateString('en-GB', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
-  });
-  const presenterText = snapshot.presenters.join(' & ');
+  ].filter(Boolean).join(', ').replace(/, ([^,]+)$/, ', $1') || 'Learner Name';
+  const license = certificate.learner?.license || 'License #';
+  const presenterText = (snapshot.presenters || []).join(' & ') || 'Presenter name(s)';
+  const cosponsor = snapshot.cosponsor || 'Sensorimotor Psychotherapy Institute';
+  const completionDate = formatLongDate(certificate.issuedAt?.slice(0, 10) || new Date().toISOString());
+  const activityDates = formatDateRange(snapshot.activityDates);
+  const isLive = template.activityTypes?.includes('live');
 
-  if (template.activityTypes.includes('live')) {
-    blank(205, 276, 1255, 112);
-    write(learnerName, 340, 46);
-    blank(205, 410, 1255, 113);
-    const titleY = wrapText(ctx, snapshot.courseName, 449, {
-      size: 32,
-      width: 1245,
-      lineHeight: 38,
-      color: '#63a63b'
-    });
-    wrapText(ctx, `${snapshot.moduleName} · ${presenterText}`, titleY + 38, {
-      size: 23,
-      width: 1245,
-      lineHeight: 29,
-      color: '#63a63b'
-    });
-    blank(210, 718, 1248, 84);
-    wrapText(
-      ctx,
-      `This activity meets the qualifications for ${snapshot.creditHours} hours of continuing education credit. Location: ${snapshot.location}.`,
-      750,
-      { size: 23, width: 1235, lineHeight: 31, color: '#171d18' }
-    );
-    blank(295, 930, 290, 55);
-    ctx.font = '29px Georgia';
-    ctx.fillStyle = '#171d18';
-    ctx.fillText(completionDate, 415, 969, 290);
+  ctx.fillStyle = INK;
+  ctx.font = '22px Georgia';
+  let y = 230;
+  ctx.fillText('This certifies that', LOGICAL_WIDTH / 2, y);
+  y += 48;
+  ctx.font = '700 34px Georgia';
+  ctx.fillText(learnerName, LOGICAL_WIDTH / 2, y, 1300);
+  y += 44;
+  ctx.font = '24px Georgia';
+  ctx.fillText(license, LOGICAL_WIDTH / 2, y);
+  y += 52;
+
+  ctx.font = '22px Georgia';
+  const activityLabel = isLive ? 'Live' : 'Home Study';
+  const intro = `has successfully completed ${hours} hours of continuing education credit in a ${activityLabel} activity cosponsored by ${cosponsor} and Lifespan Learning Institute`;
+  y = wrapCentered(ctx, intro, y, 1180, 30) + 8;
+
+  ctx.font = '700 28px Georgia';
+  y = wrapCentered(ctx, snapshot.courseName || 'Course Title', y + 16, 1180, 34) + 6;
+  ctx.font = '24px Georgia';
+  y = wrapCentered(ctx, presenterText, y + 8, 1180, 30) + 10;
+
+  if (isLive) {
+    y = wrapCentered(ctx, activityDates, y + 6, 1180, 28) + 6;
+    const location = snapshot.location ? `Location: ${snapshot.location}` : 'Location: (Place or Online)';
+    wrapCentered(ctx, location, y + 6, 1180, 28);
   } else {
-    blank(205, 467, 1255, 100);
-    write(learnerName, 528, 44);
-    blank(205, 590, 1255, 168);
-    const titleY = wrapText(ctx, snapshot.courseName, 622, {
-      size: 30,
-      width: 1180,
-      lineHeight: 36,
-      color: '#233f57'
-    });
-    wrapText(ctx, `${snapshot.moduleName} · ${snapshot.creditHours} CE Hours`, titleY + 42, {
-      size: 23,
-      width: 1180,
-      lineHeight: 30,
-      color: '#233f57'
-    });
-    blank(750, 1022, 270, 42);
-    ctx.font = '20px Inter';
-    ctx.fillStyle = '#202d25';
-    ctx.fillText(completionDate, 836, 1047, 265);
-    blank(1180, 1022, 290, 42);
-    ctx.font = '17px Inter';
-    ctx.fillText(certificate.number, 1273, 1047, 285);
-    blank(290, 1022, 350, 42);
-    ctx.font = '18px Inter';
-    ctx.fillText(presenterText, 405, 1047, 330);
+    y = wrapCentered(ctx, `recorded on ${activityDates}`, y + 6, 1180, 28) + 6;
+    wrapCentered(ctx, `Home Study completed: ${completionDate}`, y + 6, 1180, 28);
   }
 
-  write(`PROTOTYPE · ${certificate.number}`, 1147, 14, '#795938', 'Inter');
+  drawAccreditation(ctx, hours, 720);
+  drawCamftSeal(ctx, 1280, 790, 78);
+  drawSignature(ctx);
+  drawFooter(ctx);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '13px Inter';
+  ctx.fillText(certificate.number, LOGICAL_WIDTH - 48, LOGICAL_HEIGHT - 78);
+
   return true;
 }
 

@@ -94,7 +94,7 @@ const testQuestions = [
 }));
 
 const baseState = {
-  schemaVersion: 4,
+  schemaVersion: 5,
   templates: {
     evaluations: [
       {
@@ -119,8 +119,8 @@ const baseState = {
       }
     ],
     certificates: [
-      { id: 'cert-live-v1', name: 'Live Program Certificate', version: 1, activityTypes: ['live'], asset: 'assets/certificate-green.png' },
-      { id: 'cert-study-v1', name: 'Home Study & Hybrid Certificate', version: 1, activityTypes: ['home-study', 'hybrid'], asset: 'assets/certificate-navy.png' }
+      { id: 'cert-live-v1', name: 'Live Program Certificate', version: 2, activityTypes: ['live'] },
+      { id: 'cert-study-v1', name: 'Home Study & Hybrid Certificate', version: 2, activityTypes: ['home-study', 'hybrid'] }
     ]
   },
   courses: [

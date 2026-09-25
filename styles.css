@@ -660,6 +660,17 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .report-table thead th{font-size:13px}
 .distribution-list>div{font-size:14px}
 .btn.small{min-height:48px;padding:10px 16px;font-size:15px}
+.presenter-field-list{display:grid;gap:14px;margin:20px 0}
+.presenter-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;padding:16px;background:#f8faf9;border:1px solid var(--line);border-radius:14px}
+.presenter-row label{margin:0}
+.section-heading.tight{align-items:center;margin-bottom:12px}
+.section-heading.tight h3{margin:0}
+.test-question-editor{margin-bottom:16px}
+.learner-page{font-size:19px}
+.learner-page .btn.primary,.learner-page .btn.secondary{min-height:60px;font-size:19px;padding:16px 32px}
+.learner-page legend{font-size:18px}
+.learner-page .eval-named-steps span{font-size:15px;padding:10px 14px}
+.certificate-frame{background:#fff;border:6px solid var(--blue);border-radius:8px;padding:8px}
 
 @media(max-width:1100px){
   .guide-actions{grid-template-columns:1fr}

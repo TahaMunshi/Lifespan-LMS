@@ -128,6 +128,7 @@ export function makePublicationSnapshot(state, publicationId) {
     creditHours: context.module?.creditHours || 0,
     activityDates: [context.module?.startDate, context.module?.endDate],
     objectives: [...(context.publication.objectives || [])],
+    cosponsor: context.publication.cosponsor || 'Sensorimotor Psychotherapy Institute',
     certificateTemplateId: context.publication.certificateTemplateId
   };
 }

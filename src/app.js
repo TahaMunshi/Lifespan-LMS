@@ -97,8 +97,34 @@ function activityPreset(data, activityType = 'live') {
     startDate: module?.startDate || '',
     endDate,
     presenters: (cohort?.presenters || []).join('\n'),
+    cosponsor: 'Sensorimotor Psychotherapy Institute',
     objectives
   };
+}
+
+function parsePresenters(value) {
+  const list = String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
+  return list.length ? list : [''];
+}
+
+function presenterFieldsHtml(presentersText) {
+  return parsePresenters(presentersText).map((name, index, list) => `
+    <div class="presenter-row">
+      <label>Presenter ${index + 1}
+        <input type="text" class="presenter-input" value="${escapeHtml(name)}" required placeholder="Example: Pat Ogden, PhD">
+      </label>
+      ${list.length > 1 ? `<button type="button" class="btn ghost small presenter-remove" data-action="remove-presenter">Remove</button>` : ''}
+    </div>`).join('');
+}
+
+function syncPresentersField(form) {
+  if (!form) return;
+  const hidden = form.querySelector('input[name="presenters"]');
+  if (!hidden) return;
+  hidden.value = [...form.querySelectorAll('.presenter-input')]
+    .map((input) => input.value.trim())
+    .filter(Boolean)
+    .join('\n');
 }
 
 function applyActivityTypePreset(draft, data, activityType) {
@@ -320,7 +346,8 @@ function adminActivityEditor(id, stepParam) {
     creditHours: existing.creditHours,
     startDate: existing.startDate,
     endDate: existing.endDate,
-    presenters: (existing.presenters || []).join('\n')
+    presenters: (existing.presenters || []).join('\n'),
+    cosponsor: existing.cosponsor || 'Sensorimotor Psychotherapy Institute'
   } : {
     id: '',
     slug: '',
@@ -378,6 +405,7 @@ function adminActivityEditor(id, stepParam) {
   const startDateValue = draft.startDate ?? defaults.startDate ?? resolved?.module?.startDate ?? '';
   const endDateValue = draft.endDate ?? defaults.endDate ?? resolved?.module?.endDate ?? '';
   const certTemplate = ACTIVITY_TYPES[publication.activityType]?.certificateTemplate || publication.certificateTemplateId;
+  const cosponsorValue = draft.cosponsor ?? defaults.cosponsor ?? preset.cosponsor ?? 'Sensorimotor Psychotherapy Institute';
 
   const hiddenFields = (currentStep) => {
     const fields = {
@@ -391,6 +419,7 @@ function adminActivityEditor(id, stepParam) {
       startDate: startDateValue,
       endDate: endDateValue,
       presenters: presentersText,
+      cosponsor: cosponsorValue,
       deadline: publication.deadline,
       objectives: objectivesText,
       evaluationTemplateId: publication.evaluationTemplateId,
@@ -401,7 +430,7 @@ function adminActivityEditor(id, stepParam) {
       .filter(([name]) => {
         if (currentStep === 1 && name === 'activityType') return false;
         if (currentStep === 2 && ['courseId', 'versionId', 'cohortId', 'moduleId'].includes(name)) return false;
-        if (currentStep === 3 && ['location', 'creditHours', 'startDate', 'endDate', 'presenters', 'deadline'].includes(name)) return false;
+        if (currentStep === 3 && ['location', 'creditHours', 'startDate', 'endDate', 'presenters', 'deadline', 'cosponsor'].includes(name)) return false;
         if (currentStep === 4 && ['objectives', 'evaluationTemplateId', 'certificateTemplateId'].includes(name)) return false;
         if (currentStep === 5 && name === 'testTemplateId') return false;
         return true;
@@ -414,7 +443,7 @@ function adminActivityEditor(id, stepParam) {
     'Activity type',
     'Course details',
     'Dates and place',
-    'Learning goals',
+    'Objectives',
     requiresTest ? 'Knowledge check' : 'Knowledge check',
     'Review'
   ];
@@ -447,32 +476,36 @@ function adminActivityEditor(id, stepParam) {
   const step3 = `
     <section class="wizard-page" data-wizard-step="3">
       <h2>Dates, place, and presenters</h2>
-      <p>Already filled from the class group. Adjust only if needed.</p>
+      <p>Add one presenter section per person. Each name appears on the evaluation and certificate.</p>
       <div class="form-grid two">
         <label>Activity location<input name="location" value="${escapeHtml(locationValue)}" required></label>
         <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
         <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
         <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
         <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline)}" required></label>
-        <label class="span-two">Presenters (one per line)<textarea name="presenters" rows="4" required>${escapeHtml(presentersText)}</textarea></label>
+        <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
       </div>
+      <div class="presenter-field-list">${presenterFieldsHtml(presentersText)}</div>
+      <button type="button" class="btn secondary" data-action="add-presenter">+ Add another presenter</button>
+      <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
     </section>`;
 
   const step4 = `
     <section class="wizard-page" data-wizard-step="4">
-      <h2>Learning goals and evaluation</h2>
-      <p>Four learning goals are ready. Keep at least four lines — one goal per line.</p>
-      <label>Learning goals<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
+      <h2>Objectives and evaluation</h2>
+      <p>Enter at least four learning objectives — one per line. Learners will rate each objective on a 1–5 scale.</p>
+      <label>Learning objectives<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
       <label>Evaluation template<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} · v${item.version}`)}</select></label>
       <input type="hidden" name="certificateTemplateId" value="${escapeHtml(certTemplate)}">
-      <p class="muted">Certificate template is chosen automatically based on activity type.</p>
+      <p class="muted">Certificate layout is chosen automatically (Live vs. Home Study). Edit knowledge checks under Templates.</p>
     </section>`;
 
   const step5 = requiresTest ? `
     <section class="wizard-page" data-wizard-step="5">
-      <h2>Knowledge check template</h2>
-      <p>The standard knowledge check is selected for you.</p>
-      <label>Test template<select name="testTemplateId" required>${selectOptions(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id, (item) => `${item.name} · ${item.passPercent}% to pass`)}</select></label>
+      <h2>Home study knowledge check</h2>
+      <p>Choose the question set for this activity. You can edit questions under <strong>Templates → Knowledge check</strong>.</p>
+      <label>Knowledge check template<select name="testTemplateId" required>${selectOptions(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id, (item) => `${item.name} · ${item.passPercent}% to pass · ${item.questions.length} questions`)}</select></label>
+      ${data.templates.tests[0] ? routeLink(`admin/test/${publication.testTemplateId || data.templates.tests[0].id}`, 'Edit questions in this template', 'text-action') : ''}
     </section>` : `
     <section class="wizard-page" data-wizard-step="5">
       <h2>Knowledge check</h2>
@@ -494,7 +527,8 @@ function adminActivityEditor(id, stepParam) {
         <div><dt>Location</dt><dd>${escapeHtml(locationValue)}</dd></div>
         <div><dt>Credit hours</dt><dd>${escapeHtml(creditHoursValue)}</dd></div>
         <div><dt>Deadline</dt><dd>${formatDate(publication.deadline)}</dd></div>
-        <div><dt>Learning goals</dt><dd>${(objectivesText.split('\n').filter(Boolean).length)} entered</dd></div>
+        <div><dt>Presenters</dt><dd>${escapeHtml(parsePresenters(presentersText).filter(Boolean).join(', ') || 'None')}</dd></div>
+        <div><dt>Objectives</dt><dd>${(objectivesText.split('\n').filter(Boolean).length)} entered</dd></div>
         ${requiresTest ? `<div><dt>Knowledge check</dt><dd>${escapeHtml(byId(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id)?.name || 'Selected')}</dd></div>` : ''}
         <div><dt>Public link</dt><dd>Will be created from course name</dd></div>
       </dl>
@@ -540,14 +574,19 @@ function adminTemplates() {
       <div class="template-actions">${routeLink(`admin/template/${template.id}`, 'View & edit', 'btn secondary')}<button class="btn ghost" data-action="duplicate-template" data-id="${template.id}">Duplicate</button></div>
     </article>`).join('');
   const testCards = data.templates.tests.map((template) => `
-    <article class="template-card compact"><div class="template-icon">T</div><div><span class="type-chip">Test</span><h3>${escapeHtml(template.name)}</h3><p>${template.questions.length} questions · ${template.passPercent}% pass · ${template.maxAttempts} attempts</p></div></article>`).join('');
+    <article class="template-card">
+      <div class="template-icon">T</div><div><span class="type-chip">Knowledge check</span><h3>${escapeHtml(template.name)}</h3><p>${template.questions.length} multiple-choice questions · ${template.passPercent}% to pass · ${template.maxAttempts} attempts</p></div>
+      <div class="template-actions">${routeLink(`admin/test/${template.id}`, 'Edit questions', 'btn secondary')}<button class="btn ghost" data-action="duplicate-test" data-id="${template.id}">Duplicate</button></div>
+    </article>`).join('');
   const certCards = data.templates.certificates.map((template) => `
-    <article class="template-card compact"><div class="template-icon">C</div><div><span class="type-chip">Certificate</span><h3>${escapeHtml(template.name)}</h3><p>Dynamic learner, activity, module, presenter, date, location, and credit fields.</p></div></article>`).join('');
+    <article class="template-card compact"><div class="template-icon">C</div><div><span class="type-chip">Certificate</span><h3>${escapeHtml(template.name)}</h3><p>White background, slate-blue frame, and CE wording for Live or Home Study activities.</p></div></article>`).join('');
   const content = `
-    <section class="section-heading standalone"><div><p class="eyebrow">Evaluation templates</p><h2>Locked standards, flexible activity content</h2><p>Duplicate a template when you need a different reusable baseline. Do not rebuild standard questions for each activity.</p></div></section>
+    <section class="section-heading standalone"><div><p class="eyebrow">Evaluation templates</p><h2>Standard CE sections plus activity-specific fields</h2><p>Standard Learning, Presenter, Environment, and Administration wording stays locked. Objectives, presenter names, dates, and credits are set when you create each activity.</p></div></section>
     <div class="template-grid">${evaluationCards}</div>
-    <section class="section-heading standalone lower"><div><p class="eyebrow">Supporting templates</p><h2>Tests and certificates</h2></div></section>
-    <div class="template-grid two-col">${testCards}${certCards}</div>`;
+    <section class="section-heading standalone lower"><div><p class="eyebrow">Home study knowledge checks</p><h2>Build and update test questions here</h2><p>Question type available today: single-answer multiple choice (use two options for true/false).</p></div></section>
+    <div class="template-grid">${testCards}</div>
+    <section class="section-heading standalone lower"><div><p class="eyebrow">Certificates</p><h2>Automatic layouts</h2></div></section>
+    <div class="template-grid two-col">${certCards}</div>`;
   return adminShell('Templates', 'Create a reliable baseline once, then reuse it across class groups and modules.', content, 'templates');
 }
 
@@ -569,10 +608,71 @@ function adminTemplateEditor(id) {
       </section>
       <section class="locked-banner"><div><strong>Standard wording is locked</strong><p>These questions remain verbatim across every generated evaluation.</p></div><span>${locked.reduce((total, [, questions]) => total + questions.length, 0)} standard questions</span></section>
       <div class="locked-grid">${locked.map(([name, questions]) => `<details class="locked-section"><summary><span>${escapeHtml(name)}</span><strong>${questions.length} questions</strong></summary><ol>${questions.map((question) => `<li>${escapeHtml(question.text)}</li>`).join('')}</ol></details>`).join('')}</div>
-      <section class="dynamic-slots"><p class="eyebrow">Activity-specific slots</p><h2>Added when an activity is created</h2><div class="slot-grid"><span>Course and module</span><span>4+ objectives</span><span>Any number of presenters</span><span>Dates, location, and credits</span></div></section>
-      <div class="sticky-actions">${routeLink('admin/templates', 'Back', 'btn ghost')}<button type="submit" class="btn primary">Save new version</button></div>
+      <section class="dynamic-slots"><p class="eyebrow">Edit per activity (Create activity wizard)</p><h2>Fields you can update anytime</h2><div class="slot-grid"><span>Objectives (4 or more, Likert-rated)</span><span>Add/remove presenters by name</span><span>Dates, location, credit hours</span><span>Cosponsor on certificate</span><span>Knowledge check template (Home Study)</span></div></section>
+      <div class="sticky-actions">${routeLink('admin/templates', 'Back', 'btn ghost')}<button type="submit" class="btn primary">Save template name</button></div>
     </form>`;
-  return adminShell('Evaluation template', 'Inspect the reusable standard and edit template-level details.', content, 'templates');
+  return adminShell('Evaluation template', 'Rename or duplicate this template. Standard CE question wording stays fixed.', content, 'templates');
+}
+
+function adminTestEditor(id) {
+  const data = state();
+  const template = byId(data.templates.tests, id);
+  if (!template) {
+    return adminShell('Test not found', 'Return to templates.', emptyState('Template unavailable', 'This knowledge check may have been removed.', routeLink('admin/templates', 'Back to templates', 'btn primary')), 'templates');
+  }
+  const questionBlocks = template.questions.map((question, index) => `
+    <article class="editor-card test-question-editor" data-question-index="${index}">
+      <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
+      <label>Question text<textarea name="q_${index}_text" rows="2" required>${escapeHtml(question.text)}</textarea></label>
+      <div class="form-grid two">
+        ${question.options.map((option, optionIndex) => `
+          <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" required></label>`).join('')}
+      </div>
+      <label>Correct answer<select name="q_${index}_correct">${question.options.map((option, optionIndex) => `
+        <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}: ${escapeHtml(option.slice(0, 48))}${option.length > 48 ? '…' : ''}</option>`).join('')}</select></label>
+      <label>Linked objective (0 = first objective)<input type="number" min="0" step="1" name="q_${index}_objective" value="${Number(question.objectiveIndex) || 0}"></label>
+    </article>`).join('');
+  const content = `
+    <form id="test-template-form" data-id="${template.id}" data-question-count="${template.questions.length}">
+      <section class="editor-card template-editor-head">
+        <label>Template name<input name="name" value="${escapeHtml(template.name)}" required></label>
+        <div class="form-grid two">
+          <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template.passPercent}" required></label>
+          <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template.maxAttempts}" required></label>
+        </div>
+        <p class="muted">Minimum 12 questions for Home Study activities. Each objective needs at least three linked questions.</p>
+      </section>
+      <div id="test-question-list">${questionBlocks}</div>
+      <button type="button" class="btn secondary" data-action="add-test-question">+ Add question</button>
+      <div class="sticky-actions">${routeLink('admin/templates', 'Back', 'btn ghost')}<button type="submit" class="btn primary">Save knowledge check</button></div>
+    </form>`;
+  return adminShell('Knowledge check template', 'Add or update multiple-choice questions for home study activities.', content, 'templates');
+}
+
+function collectTestTemplateForm(form) {
+  const questions = [...form.querySelectorAll('.test-question-editor')].map((block, index) => {
+    const text = block.querySelector('textarea')?.value?.trim();
+    const options = [...block.querySelectorAll('.form-grid.two input')]
+      .map((input) => input.value.trim())
+      .filter(Boolean);
+    const correct = Number(block.querySelector('select')?.value) || 0;
+    const objectiveIndex = Number(block.querySelector('input[type="number"]')?.value) || 0;
+    if (!text || options.length < 2) return null;
+    while (options.length < 4) options.push(`Option ${options.length + 1}`);
+    return {
+      id: `tq-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+      text,
+      options: options.slice(0, 4),
+      correct,
+      objectiveIndex
+    };
+  }).filter(Boolean);
+  return {
+    name: new FormData(form).get('name'),
+    passPercent: new FormData(form).get('passPercent'),
+    maxAttempts: new FormData(form).get('maxAttempts'),
+    questions
+  };
 }
 
 function reportData(publicationId) {
@@ -836,61 +936,10 @@ function ratingQuestion(name, question, value = '') {
   return `<fieldset class="question rating-question"><legend>${escapeHtml(text)}</legend><div class="star-scale">${scale.map(([number, label]) => `<label class="star-choice"><input type="radio" name="${escapeHtml(name)}" value="${number}" ${selected === number ? 'checked' : ''} required><span class="rating-label"><strong>${number}</strong>${escapeHtml(label)}</span><span class="star" aria-hidden="true">★</span></label>`).join('')}</div></fieldset>`;
 }
 
-function objectiveMcqFallback(objective, index) {
-  const correctAnswers = [
-    'Track breath, posture, and muscle tone as possible cues of hopelessness or despair.',
-    'Notice how bodily states can maintain depression and shape clinical work.',
-    'Use body-oriented interventions when talk alone is not enough.',
-    'Practice three sensorimotor interventions for suicidality-related affect.',
-    'Use mindfulness to support present-moment awareness alongside talk therapy.',
-    'Name secure, avoidant, ambivalent, and disorganized attachment patterns.',
-    'Link attachment history to current relationship and clinical presentation.',
-    'Assess adult clients with an attachment-informed lens.',
-    'Choose attachment-informed interventions when building a treatment plan.',
-    'Identify early signs of autonomic dysregulation in trauma work.',
-    'Stabilize and resource before deeper trauma processing.',
-    'Differentiate top-down cognitive work from bottom-up body-based work.',
-    'Build a phased trauma-informed plan with clear safety steps.'
-  ];
-  const correct = correctAnswers[index % correctAnswers.length];
-  const distractors = [
-    'Ignore body cues and focus only on paperwork.',
-    'Increase activation as quickly as possible in every session.',
-    'Skip consent and move straight to trauma processing.'
-  ];
-  return {
-    prompt: `Learning goal: ${objective}`,
-    options: [correct, ...distractors],
-    correctIndex: 0
-  };
-}
-
-function objectiveMcqQuestion(name, objective, index, context, draftValue = '') {
-  const fromTest = (context.testTemplate?.questions || [])
-    .filter((question) => Number(question.objectiveIndex) === index);
-  const source = fromTest[0]
-    ? {
-      prompt: fromTest[0].text,
-      options: fromTest[0].options,
-      correctIndex: Number(fromTest[0].correct)
-    }
-    : objectiveMcqFallback(objective, index);
-  const values = source.options.map((_, optionIndex) => (
-    optionIndex === source.correctIndex ? '5' : String(Math.max(1, optionIndex))
-  ));
-  const selected = draftValue === '' || draftValue == null ? '5' : String(draftValue);
-  const correctText = source.options[source.correctIndex];
-  return `
-    <fieldset class="question mcq-question">
-      <legend>${escapeHtml(source.prompt)}</legend>
-      <p class="goal-ref">Linked learning goal: ${escapeHtml(objective)}</p>
-      <div class="answer-hint"><span>Correct answer</span><strong>${escapeHtml(correctText)}</strong></div>
-      ${source.options.map((option, optionIndex) => `
-        <label class="test-choice ${optionIndex === source.correctIndex ? 'is-correct' : ''}">
-          <input type="radio" name="${escapeHtml(name)}" value="${values[optionIndex]}" ${selected === values[optionIndex] ? 'checked' : ''} required>
-          <span>${escapeHtml(option)}</span>
-        </label>`).join('')}
-    </fieldset>`;
+function objectiveRatingQuestion(name, objective, draftValue = '') {
+  return ratingQuestion(name, {
+    text: `This activity helped me achieve the following objective: ${objective}`
+  }, draftValue);
 }
 
 function evaluationPages(context, draft) {
@@ -902,8 +951,11 @@ function evaluationPages(context, draft) {
     license: 'LCSW-12345',
     ...(draft.learner || {})
   };
-  const presenterQuestions = context.cohort.presenters.flatMap((presenter, presenterIndex) => [
-    `<div class="presenter-heading"><span>${presenterIndex + 1}</span><div><h2>${escapeHtml(presenter)}</h2><p>Rate this presenter using the standard questions.</p></div></div>`,
+  const presenters = context.cohort?.presenters?.length
+    ? context.cohort.presenters
+    : ['Presenter name not set'];
+  const presenterQuestions = presenters.flatMap((presenter, presenterIndex) => [
+    `<div class="presenter-heading"><span>${presenterIndex + 1}</span><div><h2>Presenter: ${escapeHtml(presenter)}</h2><p>Please rate this presenter using the same 1–5 scale.</p></div></div>`,
     ...STANDARD_QUESTIONS.presenter.map((question) => ratingQuestion(`presenter.${presenterIndex}.${question.id}`, question, draft.ratings?.[`presenter.${presenterIndex}.${question.id}`]))
   ]);
   return [
@@ -913,12 +965,11 @@ function evaluationPages(context, draft) {
       body: STANDARD_QUESTIONS.learning.map((question) => ratingQuestion(`learning.${question.id}`, question, draft.ratings?.[`learning.${question.id}`])).join('')
     },
     {
-      title: 'Learning goals',
-      subtitle: 'Answer each question. Correct answers are shown and already selected.',
-      kind: 'mcq',
-      body: context.publication.objectives.map((objective, index) => (
-        objectiveMcqQuestion(`objective.${index}`, objective, index, context, draft.ratings?.[`objective.${index}`])
-      )).join('')
+      title: 'Objectives',
+      subtitle: 'Rate each learning objective. 1 = strongly disagree, 5 = strongly agree.',
+      body: `<div class="scale-legend"><strong>How to answer:</strong> Tap a number from 1 to 5 under each objective. You can change your choice before you continue.</div>${context.publication.objectives.map((objective, index) => (
+        objectiveRatingQuestion(`objective.${index}`, objective, draft.ratings?.[`objective.${index}`])
+      )).join('')}`
     },
     {
       title: 'Presenters',
@@ -955,11 +1006,9 @@ function learnerEvaluation(context, pageIndex, preview = false) {
   const prevButton = currentIndex > 0
     ? `<button type="button" class="btn ghost" data-action="eval-prev">Previous</button>`
     : routeLink(preview ? `preview/${context.publication.id}` : `learn/${context.publication.slug}`, 'Back', 'btn ghost');
-  const help = page.kind === 'mcq'
-    ? '<p class="rating-help">Choose the best answer for each question. Correct answers are pre-selected so you can continue.</p>'
-    : currentIndex < pages.length - 1
-      ? '<p class="rating-help"><span aria-hidden="true">★</span> Ratings are pre-selected. Change any star you like, then continue.</p>'
-      : '';
+  const help = currentIndex < pages.length - 1
+    ? '<p class="rating-help"><span aria-hidden="true">★</span> Tap a number to rate each item. When you are finished with this page, press <strong>Continue</strong>.</p>'
+    : '';
   const content = `${namedSteps}${progress}<form id="learner-evaluation" data-id="${context.publication.id}" data-page="${currentIndex}" data-preview="${preview}"><section class="evaluation-card"><div class="evaluation-heading"><p class="eyebrow">Step ${currentIndex + 1}</p><h2>${escapeHtml(page.title)}</h2><p>${escapeHtml(page.subtitle)}</p></div>${help}${page.body}</section><div class="form-navigation">${prevButton}<button class="btn primary" type="submit">${currentIndex === pages.length - 1 ? 'Submit evaluation' : 'Continue'}</button></div></form>`;
   return learnerBase(context, content, { preview, label: 'Evaluation' });
 }
@@ -984,16 +1033,14 @@ function learnerTest(context, questionIndex = 0, preview = false) {
   const qIndex = Math.min(Math.max(Number(questionIndex) || 0, 0), template.questions.length - 1);
   const question = template.questions[qIndex];
   const answers = testAnswers(context.publication.id, preview);
-  const correctIndex = Number(question.correct);
-  const correctText = question.options[correctIndex] || '';
-  const selected = answers[question.id] ?? String(correctIndex);
+  const selected = answers[question.id] ?? '';
   const isLast = qIndex === template.questions.length - 1;
   const last = progress.attempts.at(-1);
   const hiddenAnswers = Object.entries(answers)
     .filter(([qId]) => qId !== question.id)
     .map(([qId, value]) => `<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(value)}">`)
     .join('');
-  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}</p><h2>Knowledge check</h2><p>The correct answer is shown and selected. Click continue to move on.</p></div><div class="answer-hint"><span>Correct answer</span><strong>${escapeHtml(correctText)}</strong></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label class="test-choice ${optionIndex === correctIndex ? 'is-correct' : ''}"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
+  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}</p><h2>Knowledge check</h2><p>Choose the best answer, then press Continue. You need ${context.testTemplate.passPercent}% to pass.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
   return learnerBase(context, content, { preview, label: 'Knowledge check' });
 }
 
@@ -1028,7 +1075,8 @@ function learnerCertificate(context, preview = false) {
           location: context.cohort.location,
           creditHours: context.module.creditHours,
           activityDates: [context.module.startDate, context.module.endDate],
-          objectives: [...context.publication.objectives]
+          objectives: [...context.publication.objectives],
+          cosponsor: context.publication.cosponsor || 'Sensorimotor Psychotherapy Institute'
         },
         templateId: context.publication.certificateTemplateId
       }
@@ -1087,6 +1135,7 @@ function render() {
   else if (screen === 'activity') app.innerHTML = adminActivityEditor(parts[2], parts[3] === 'edit' ? parts[4] : 1);
   else if (screen === 'templates') app.innerHTML = adminTemplates();
   else if (screen === 'template') app.innerHTML = adminTemplateEditor(parts[2]);
+  else if (screen === 'test') app.innerHTML = adminTestEditor(parts[2]);
   else if (screen === 'reports') app.innerHTML = adminReports(parts[2]);
   else if (screen === 'certificates') app.innerHTML = adminCertificates();
   else app.innerHTML = adminDashboard();
@@ -1135,6 +1184,7 @@ function submitActivityForm(form) {
     startDate: mergedData.startDate,
     endDate: mergedData.endDate,
     presenters: String(mergedData.presenters || '').split('\n').map((item) => item.trim()).filter(Boolean),
+    cosponsor: String(mergedData.cosponsor || '').trim() || 'Sensorimotor Psychotherapy Institute',
     evaluationTemplateId: mergedData.evaluationTemplateId || state().templates.evaluations[0].id,
     testTemplateId: requiresTest ? (mergedData.testTemplateId || state().templates.tests[0].id) : null,
     certificateTemplateId: ACTIVITY_TYPES[activityType].certificateTemplate,
@@ -1195,6 +1245,7 @@ document.addEventListener('submit', (event) => {
 
   if (form.id === 'activity-form') {
     if (Number(form.dataset.step) !== 6) return;
+    syncPresentersField(form);
     submitActivityForm(form);
     return;
   }
@@ -1202,6 +1253,20 @@ document.addEventListener('submit', (event) => {
     store.renameEvaluationTemplate(form.dataset.id, new FormData(form).get('name'));
     toast('Template saved as a new version.');
     render();
+    return;
+  }
+  if (form.id === 'test-template-form') {
+    const payload = collectTestTemplateForm(form);
+    if (payload.questions.length < 1) {
+      toast('Add at least one complete question.', 'error');
+      return;
+    }
+    const result = store.saveTestTemplate(form.dataset.id, payload);
+    if (!result.ok) toast(result.errors.join(' '), 'error');
+    else {
+      toast('Knowledge check saved.');
+      render();
+    }
     return;
   }
   if (form.id === 'learner-evaluation') {
@@ -1309,6 +1374,9 @@ document.addEventListener('click', async (event) => {
   } else if (action === 'wizard-next' || action === 'wizard-prev' || action === 'wizard-goto') {
     const form = document.querySelector('#activity-form');
     if (!form) return;
+    if (action === 'wizard-next' || action === 'wizard-prev' || action === 'wizard-goto') {
+      syncPresentersField(form);
+    }
     if (action === 'wizard-next' && !form.reportValidity()) return;
     const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
     const draft = loadWizardDraft(draftKey);
@@ -1349,6 +1417,58 @@ document.addEventListener('click', async (event) => {
     const duplicate = store.duplicateEvaluationTemplate(id);
     toast('Template duplicated.');
     location.hash = `#/admin/template/${duplicate.id}`;
+  } else if (action === 'duplicate-test') {
+    const duplicate = store.duplicateTestTemplate(id);
+    toast('Knowledge check duplicated.');
+    location.hash = `#/admin/test/${duplicate.id}`;
+  } else if (action === 'add-presenter') {
+    const list = document.querySelector('.presenter-field-list');
+    const form = document.querySelector('#activity-form');
+    if (!list || !form) return;
+    syncPresentersField(form);
+    const count = list.querySelectorAll('.presenter-row').length + 1;
+    list.insertAdjacentHTML('beforeend', `
+      <div class="presenter-row">
+        <label>Presenter ${count}
+          <input type="text" class="presenter-input" value="" required placeholder="Example: Pat Ogden, PhD">
+        </label>
+        <button type="button" class="btn ghost small presenter-remove" data-action="remove-presenter">Remove</button>
+      </div>`);
+  } else if (action === 'remove-presenter') {
+    const row = target.closest('.presenter-row');
+    const list = document.querySelector('.presenter-field-list');
+    if (!row || !list || list.querySelectorAll('.presenter-row').length < 2) return;
+    row.remove();
+    [...list.querySelectorAll('.presenter-row')].forEach((item, index) => {
+      const label = item.querySelector('label');
+      if (label) label.firstChild.textContent = `Presenter ${index + 1} `;
+    });
+    syncPresentersField(document.querySelector('#activity-form'));
+  } else if (action === 'add-test-question') {
+    const form = document.querySelector('#test-template-form');
+    const list = document.querySelector('#test-question-list');
+    if (!form || !list) return;
+    const index = Number(form.dataset.questionCount) || 0;
+    form.dataset.questionCount = String(index + 1);
+    list.insertAdjacentHTML('beforeend', `
+      <article class="editor-card test-question-editor" data-question-index="${index}">
+        <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
+        <label>Question text<textarea name="q_${index}_text" rows="2" required></textarea></label>
+        <div class="form-grid two">
+          <label>Answer 1<input name="q_${index}_opt_0" required></label>
+          <label>Answer 2<input name="q_${index}_opt_1" required></label>
+          <label>Answer 3<input name="q_${index}_opt_2" value="Optional third answer"></label>
+          <label>Answer 4<input name="q_${index}_opt_3" value="Optional fourth answer"></label>
+        </div>
+        <label>Correct answer<select name="q_${index}_correct"><option value="0">Answer 1</option><option value="1">Answer 2</option></select></label>
+        <label>Linked objective (0 = first objective)<input type="number" min="0" step="1" name="q_${index}_objective" value="0"></label>
+      </article>`);
+  } else if (action === 'remove-test-question') {
+    const form = document.querySelector('#test-template-form');
+    const block = target.closest('.test-question-editor');
+    if (!form || !block) return;
+    block.remove();
+    toast('Question removed. Save to apply changes.');
   } else if (action === 'toggle-publish') {
     const result = store.togglePublication(id);
     if (!result.ok) toast(result.errors.join(' '), 'error');
