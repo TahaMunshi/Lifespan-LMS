@@ -62,7 +62,7 @@ export function buildCertificateMarkup(certificate, template) {
     <article class="certificate-document" aria-label="Certificate of completion">
       <div class="cert-sheet">
         <header class="cert-header">
-          <img class="cert-logo" src="assets/logo.png?v=4" alt="Lifespan Learning Institute">
+          <img class="cert-logo" src="assets/logo.png?v=4" alt="Lifespan Learning Institute" crossorigin="anonymous">
         </header>
         <p class="cert-lead">This certifies that</p>
         <p class="cert-name">${escapeHtml(learnerName)}</p>
@@ -78,10 +78,10 @@ export function buildCertificateMarkup(certificate, template) {
             <p class="cert-accreditation-em"><em>This course meets the qualifications for ${escapeHtml(hours)} hours of continuing education credit for LMFTs, LCSWs, LPCCs, and/or LEPs as required by the California Board of Behavioral Sciences.</em></p>
           </div>
           <div class="cert-official">
-            <img class="cert-seal" src="assets/certificate-camft-seal.png" alt="CAMFT approved continuing education provider">
+            <img class="cert-seal" src="assets/certificate-camft-seal.png?v=2" alt="CAMFT approved continuing education provider" crossorigin="anonymous">
             <div class="cert-sign-block">
               <span class="cert-sign-label">Authorized by</span>
-              <img class="cert-sign" src="assets/certificate-signature.png" alt="Signature of Bonnie Goldstein">
+              <img class="cert-sign" src="assets/certificate-signature.png?v=2" alt="Signature of Bonnie Goldstein" crossorigin="anonymous">
             </div>
           </div>
         </div>
@@ -91,41 +91,71 @@ export function buildCertificateMarkup(certificate, template) {
     </article>`;
 }
 
-async function captureCertificateNode(node) {
-  const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm');
-  const sheet = node.querySelector('.cert-sheet') || node;
-  await Promise.all([...sheet.querySelectorAll('img')].map((img) => (
-    img.complete ? Promise.resolve() : new Promise((resolve) => {
+function waitForImages(root) {
+  return Promise.all([...root.querySelectorAll('img')].map((img) => {
+    if (img.complete && img.naturalWidth) return Promise.resolve();
+    return new Promise((resolve) => {
       img.onload = resolve;
       img.onerror = resolve;
-    })
-  )));
-  const scale = Math.max(2, window.devicePixelRatio || 2);
-  return html2canvas(sheet, {
-    scale,
-    backgroundColor: '#ffffff',
-    useCORS: true,
-    logging: false,
-    width: sheet.scrollWidth,
-    height: sheet.scrollHeight,
-    windowWidth: sheet.scrollWidth,
-    windowHeight: sheet.scrollHeight
-  });
+    });
+  }));
 }
 
-export async function renderCertificate(target, certificate, template) {
-  if (!target || !certificate?.snapshot || !template) return false;
-  target.innerHTML = buildCertificateMarkup(certificate, template);
-  target.dataset.ready = 'true';
-  return true;
+async function captureCertificateNode(mount) {
+  const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm');
+  const sheet = mount.querySelector('.cert-sheet') || mount;
+  await waitForImages(sheet);
+  if (document.fonts?.ready) await document.fonts.ready;
+
+  const width = Math.max(1, Math.round(sheet.getBoundingClientRect().width));
+  const height = Math.max(1, Math.round(sheet.getBoundingClientRect().height));
+  const clone = sheet.cloneNode(true);
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = [
+    'position:fixed',
+    'left:-14000px',
+    'top:0',
+    `width:${width}px`,
+    'margin:0',
+    'padding:0',
+    'background:#ffffff',
+    'pointer-events:none',
+    'z-index:-1'
+  ].join(';');
+  clone.style.width = `${width}px`;
+  clone.style.height = `${height}px`;
+  clone.style.maxWidth = 'none';
+  clone.style.boxSizing = 'border-box';
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  await waitForImages(clone);
+
+  try {
+    return await html2canvas(clone, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width,
+      height,
+      windowWidth: width,
+      windowHeight: height,
+      scrollX: 0,
+      scrollY: 0
+    });
+  } finally {
+    host.remove();
+  }
 }
 
-export async function downloadCertificatePdf(mount, filename) {
-  if (!mount || mount.dataset.ready !== 'true') return false;
-  const node = mount.querySelector('.certificate-document') || mount;
-  const canvas = await captureCertificateNode(node);
+function buildPdfFromCanvas(canvas) {
+  // Keep the PDF page the same shape as the preview capture — never stretch.
+  const pageWidth = 842;
+  const pageHeight = Math.max(1, Math.round(pageWidth * (canvas.height / canvas.width)));
   const imageBytes = Uint8Array.from(
-    atob(canvas.toDataURL('image/jpeg', 0.96).split(',')[1]),
+    atob(canvas.toDataURL('image/jpeg', 0.98).split(',')[1]),
     (character) => character.charCodeAt(0)
   );
   const encoder = new TextEncoder();
@@ -145,12 +175,12 @@ export async function downloadCertificatePdf(mount, filename) {
   add('%PDF-1.4\n');
   object(1, '<< /Type /Catalog /Pages 2 0 R >>');
   object(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-  object(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 587] /Resources << /XObject << /Image0 4 0 R >> >> /Contents 5 0 R >>');
+  object(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Image0 4 0 R >> >> /Contents 5 0 R >>`);
   offsets[4] = size;
   add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`);
   add(imageBytes);
   add('\nendstream\nendobj\n');
-  const stream = 'q\n842 0 0 587 0 0 cm\n/Image0 Do\nQ\n';
+  const stream = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Image0 Do\nQ\n`;
   object(5, `<< /Length ${encoder.encode(stream).length} >>\nstream\n${stream}endstream`);
   const xref = size;
   add('xref\n0 6\n0000000000 65535 f \n');
@@ -158,9 +188,24 @@ export async function downloadCertificatePdf(mount, filename) {
     add(`${String(offsets[index]).padStart(10, '0')} 00000 n \n`);
   }
   add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  return new Blob(chunks, { type: 'application/pdf' });
+}
 
+export async function renderCertificate(target, certificate, template) {
+  if (!target || !certificate?.snapshot || !template) return false;
+  target.innerHTML = buildCertificateMarkup(certificate, template);
+  const sheet = target.querySelector('.cert-sheet');
+  if (sheet) await waitForImages(sheet);
+  target.dataset.ready = 'true';
+  return true;
+}
+
+export async function downloadCertificatePdf(mount, filename) {
+  if (!mount || mount.dataset.ready !== 'true') return false;
+  const canvas = await captureCertificateNode(mount);
+  const blob = buildPdfFromCanvas(canvas);
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob(chunks, { type: 'application/pdf' }));
+  link.href = URL.createObjectURL(blob);
   link.download = filename;
   link.click();
   setTimeout(() => URL.revokeObjectURL(link.href), 500);
