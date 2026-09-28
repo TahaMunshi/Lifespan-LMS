@@ -21,7 +21,7 @@ function formatDateRange(dates) {
   const clean = (dates || []).filter(Boolean).map((item) => formatLongDate(item));
   if (!clean.length) return 'Date not recorded';
   if (clean.length === 1 || clean[0] === clean[1]) return clean[0];
-  return `${clean[0]} – ${clean[1]}`;
+  return `${clean[0]} ??? ${clean[1]}`;
 }
 
 function formatHours(hours) {
@@ -85,13 +85,14 @@ export function buildCertificateMarkup(certificate, template) {
             </div>
           </div>
         </div>
-        <footer class="cert-footer">Lifespan Learning Institute • 10825 Ashby Avenue • Los Angeles, CA 90066 • 310.474.2505 • lifespanlearn.org</footer>
+        <footer class="cert-footer">Lifespan Learning Institute ??? 10825 Ashby Avenue ??? Los Angeles, CA 90066 ??? 310.474.2505 ??? lifespanlearn.org</footer>
         <span class="cert-number">${escapeHtml(certificate.number)}</span>
       </div>
     </article>`;
 }
 
-async function captureCertificateNode(mount) {
+
+async function captureCertificateForDownload(mount) {
   const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm');
   const sheet = mount.querySelector('.cert-sheet') || mount;
   await Promise.all([...sheet.querySelectorAll('img')].map((img) => (
@@ -102,7 +103,7 @@ async function captureCertificateNode(mount) {
   )));
   if (document.fonts?.ready) await document.fonts.ready;
 
-  // Capture at US Letter landscape proportions so the PDF/print fills the page.
+  // Off-screen only — does not change the approved on-screen preview.
   const captureWidth = 1100;
   const captureHeight = Math.round(captureWidth * (8.5 / 11));
   const clone = sheet.cloneNode(true);
@@ -110,8 +111,8 @@ async function captureCertificateNode(mount) {
   host.setAttribute('aria-hidden', 'true');
   host.style.cssText = 'position:fixed;left:-14000px;top:0;margin:0;padding:0;background:#fff;pointer-events:none;z-index:-1;';
   clone.style.cssText = [
-    `width:${captureWidth}px`,
-    `height:${captureHeight}px`,
+    'width:' + captureWidth + 'px',
+    'height:' + captureHeight + 'px',
     'max-width:none',
     'aspect-ratio:11 / 8.5',
     'box-sizing:border-box',
@@ -155,8 +156,8 @@ export async function renderCertificate(target, certificate, template) {
 
 export async function downloadCertificatePdf(mount, filename) {
   if (!mount || mount.dataset.ready !== 'true') return false;
-  const canvas = await captureCertificateNode(mount);
-  // US Letter landscape — full-bleed so print "fit to page" fills the sheet.
+  const canvas = await captureCertificateForDownload(mount);
+  // US Letter landscape, full-bleed for print/download only.
   const pageWidth = 792;
   const pageHeight = 612;
   const imageBytes = Uint8Array.from(
@@ -174,25 +175,25 @@ export async function downloadCertificatePdf(mount, filename) {
   };
   const object = (number, value) => {
     offsets[number] = size;
-    add(`${number} 0 obj\n${value}\nendobj\n`);
+    add(number + ' 0 obj\n' + value + '\nendobj\n');
   };
 
   add('%PDF-1.4\n');
   object(1, '<< /Type /Catalog /Pages 2 0 R >>');
   object(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
-  object(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Image0 4 0 R >> >> /Contents 5 0 R >>`);
+  object(3, '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ' + pageWidth + ' ' + pageHeight + '] /Resources << /XObject << /Image0 4 0 R >> >> /Contents 5 0 R >>');
   offsets[4] = size;
-  add(`4 0 obj\n<< /Type /XObject /Subtype /Image /Width ${canvas.width} /Height ${canvas.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${imageBytes.length} >>\nstream\n`);
+  add('4 0 obj\n<< /Type /XObject /Subtype /Image /Width ' + canvas.width + ' /Height ' + canvas.height + ' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ' + imageBytes.length + ' >>\nstream\n');
   add(imageBytes);
   add('\nendstream\nendobj\n');
-  const stream = `q\n${pageWidth} 0 0 ${pageHeight} 0 0 cm\n/Image0 Do\nQ\n`;
-  object(5, `<< /Length ${encoder.encode(stream).length} >>\nstream\n${stream}endstream`);
+  const stream = 'q\n' + pageWidth + ' 0 0 ' + pageHeight + ' 0 0 cm\n/Image0 Do\nQ\n';
+  object(5, '<< /Length ' + encoder.encode(stream).length + ' >>\nstream\n' + stream + 'endstream');
   const xref = size;
   add('xref\n0 6\n0000000000 65535 f \n');
   for (let index = 1; index < 6; index += 1) {
-    add(`${String(offsets[index]).padStart(10, '0')} 00000 n \n`);
+    add(String(offsets[index]).padStart(10, '0') + ' 00000 n \n');
   }
-  add(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`);
+  add('trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF');
 
   const link = document.createElement('a');
   link.href = URL.createObjectURL(new Blob(chunks, { type: 'application/pdf' }));
@@ -201,5 +202,6 @@ export async function downloadCertificatePdf(mount, filename) {
   setTimeout(() => URL.revokeObjectURL(link.href), 500);
   return true;
 }
+
 
 export { FRAME_COLOR };
