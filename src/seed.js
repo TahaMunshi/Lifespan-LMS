@@ -93,8 +93,12 @@ const testQuestions = [
   correct
 }));
 
+export function cloneStandardSections() {
+  return structuredClone(STANDARD_QUESTIONS);
+}
+
 const baseState = {
-  schemaVersion: 5,
+  schemaVersion: 6,
   templates: {
     evaluations: [
       {
@@ -102,9 +106,8 @@ const baseState = {
         name: 'Standard CE Evaluation',
         version: 1,
         status: 'active',
-        lockedSections: ['learning', 'presenter', 'environment', 'administration'],
         dynamicSections: ['objectives', 'presenters', 'activity'],
-        questionSet: 'standard-ce'
+        sections: cloneStandardSections()
       }
     ],
     tests: [

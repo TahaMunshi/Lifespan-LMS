@@ -1,9 +1,10 @@
-import { STANDARD_QUESTIONS } from './seed.js';
+import { STANDARD_QUESTIONS, cloneStandardSections } from './seed.js';
 import { store } from './store.js';
 import {
   ACTIVITY_TYPES,
   activityContext,
   byId,
+  evaluationSections,
   formatDate,
   isExpired,
   learnerProgress,
@@ -205,6 +206,18 @@ function statusBadge(status) {
   return `<span class="status ${status}">${label}</span>`;
 }
 
+function pencilBtn(action, id = '', label = 'Edit') {
+  return `<button type="button" class="btn-pencil" data-action="${escapeHtml(action)}" ${id ? `data-id="${escapeHtml(id)}"` : ''} aria-label="${escapeHtml(label)}" title="${escapeHtml(label)}"><span aria-hidden="true">✎</span><span class="btn-pencil-text">${escapeHtml(label)}</span></button>`;
+}
+
+function nextStepBanner(text, actionHtml = '') {
+  return `<div class="next-step-banner" role="status"><div><strong>What to do next</strong><p>${escapeHtml(text)}</p></div>${actionHtml}</div>`;
+}
+
+function templateQuestionBank(template) {
+  return evaluationSections(template) || cloneStandardSections();
+}
+
 function adminShell(title, subtitle, content, active = 'dashboard', actions = '') {
   const navigation = [
     ['dashboard', 'Overview'],
@@ -227,6 +240,7 @@ function adminShell(title, subtitle, content, active = 'dashboard', actions = ''
               <span>${label}</span>
             </a>`).join('')}
         </nav>
+        <a class="sidebar-learner" href="#/learn">Open Learner portal</a>
         <div class="sidebar-note">
           <span>Frontend prototype</span>
           <small>Data is stored on this device.</small>
@@ -235,8 +249,8 @@ function adminShell(title, subtitle, content, active = 'dashboard', actions = ''
       <section class="admin-workspace">
         <header class="admin-header">
           <button class="mobile-menu" data-action="menu" aria-label="Toggle navigation">Menu</button>
-          <div><p class="eyebrow">Lifespan LMS</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div>
-          <div class="header-actions">${actions}</div>
+          <div><p class="eyebrow">Admin portal</p><h1>${escapeHtml(title)}</h1><p>${escapeHtml(subtitle)}</p></div>
+          <div class="header-actions">${routeLink('learn', 'Learner portal', 'btn secondary')}${actions}</div>
         </header>
         <main class="admin-main" id="main">${content}</main>
       </section>
@@ -267,9 +281,9 @@ function adminDashboard() {
   }).join('');
   const content = `
     <section class="guide-actions">
-      ${routeLink('admin/activity/new/edit/1', '<span class="guide-icon">+</span><strong>Create activity</strong><small>Set up a new learning activity step by step.</small>', 'guide-card')}
-      ${routeLink('admin/activities', '<span class="guide-icon">A</span><strong>Open activities</strong><small>View, edit, and publish your activities.</small>', 'guide-card')}
-      ${routeLink('admin/reports', '<span class="guide-icon">R</span><strong>View reports</strong><small>See evaluation results and download reports.</small>', 'guide-card')}
+      ${routeLink('admin/activity/new/edit/1', '<span class="guide-icon">+</span><strong>Create activity</strong><small>One page. Fill in, save, publish.</small>', 'guide-card')}
+      ${routeLink('admin/templates', '<span class="guide-icon">T</span><strong>Edit forms &amp; tests</strong><small>Pencil icons edit names and questions.</small>', 'guide-card')}
+      ${routeLink('learn', '<span class="guide-icon">L</span><strong>Learner portal</strong><small>See what learners see after you publish.</small>', 'guide-card')}
     </section>
     <section class="metric-grid secondary">${stats.map(([label, value, note]) => `<article class="metric"><span>${escapeHtml(label)}</span><strong>${value}</strong><small>${escapeHtml(note)}</small></article>`).join('')}</section>
     <section class="content-card"><div class="section-heading"><div><h2>Recent activities</h2><p>Pick up where you left off.</p></div>${routeLink('admin/activities', 'View all', 'text-action')}</div>${recent || emptyState('No activities yet', 'Create your first activity to get started.', routeLink('admin/activity/new/edit/1', 'Create activity', 'btn primary'))}</section>`;
@@ -283,7 +297,7 @@ function adminActivities() {
     const responseCount = data.submissions.filter((item) => item.publicationId === publication.id).length;
     const publicUrl = `${location.origin}${location.pathname}#/learn/${publication.slug}`;
     const primaryAction = publication.status === 'published'
-      ? routeLink(`admin/activity/${publication.id}/edit/1`, 'Edit', 'btn secondary')
+      ? `<button class="btn primary" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy learner link</button>`
       : `<button class="btn primary" data-action="toggle-publish" data-id="${publication.id}">Publish</button>`;
     return `
       <article class="activity-card">
@@ -292,17 +306,18 @@ function adminActivities() {
           <h2>${escapeHtml(context.course?.name)}</h2>
           <p>${escapeHtml(context.version?.name)} · Class group: ${escapeHtml(context.cohort?.name)} · ${escapeHtml(context.module?.name)}</p>
           <div class="activity-meta"><span>Deadline <strong>${formatDate(publication.deadline)}</strong></span><span>Learning goals <strong>${publication.objectives.length}</strong></span><span>Responses <strong>${responseCount}</strong></span><span>Credit hours <strong>${context.module?.creditHours}</strong></span></div>
-          ${publication.status === 'published' ? `<div class="published-link"><span>${escapeHtml(publicUrl)}</span><button data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy</button></div>` : ''}
+          ${publication.status === 'published' ? `<div class="published-link"><span>${escapeHtml(publicUrl)}</span><button data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy</button></div>` : '<p class="muted">Draft — not visible in the Learner portal until you publish.</p>'}
         </div>
         <div class="activity-card-actions senior">
+          ${pencilBtn('goto-activity-edit', publication.id, 'Edit')}
           ${primaryAction}
-          ${publication.status !== 'published' ? routeLink(`admin/activity/${publication.id}/edit/1`, 'Edit', 'btn secondary') : ''}
           <details class="more-actions">
             <summary>More actions</summary>
             <div class="more-panel">
               <button class="btn ghost" data-action="duplicate-publication" data-id="${publication.id}">Duplicate</button>
               ${routeLink(`preview/${publication.id}`, 'Preview', 'btn ghost')}
-              ${publication.status === 'published' ? `<button class="btn ghost" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link</button><button class="btn danger-ghost" data-action="toggle-publish" data-id="${publication.id}">Unpublish</button>` : ''}
+              ${routeLink('learn', 'Open Learner portal', 'btn ghost')}
+              ${publication.status === 'published' ? `<button class="btn danger-ghost" data-action="toggle-publish" data-id="${publication.id}">Unpublish</button>` : ''}
             </div>
           </details>
         </div>
@@ -310,8 +325,8 @@ function adminActivities() {
   }).join('');
   return adminShell(
     'Activities',
-    'View and manage your learning activities.',
-    `<div class="filter-bar"><div><strong>${data.publications.length} activities</strong><span>${data.publications.filter((item) => item.status === 'draft').length} drafts not yet published</span></div>${routeLink('admin/activity/new/edit/1', 'Create activity', 'btn primary')}</div><section class="activity-list">${rows}</section>`,
+    'What you publish here appears in the Learner portal.',
+    `${nextStepBanner('Press the pencil to edit an activity on one page. Publish to show it to learners.')}<div class="filter-bar"><div><strong>${data.publications.length} activities</strong><span>${data.publications.filter((item) => item.status === 'draft').length} drafts not yet published</span></div>${routeLink('admin/activity/new/edit/1', 'Create activity', 'btn primary')}</div><section class="activity-list">${rows}</section>`,
     'activities',
     routeLink('admin/activity/new/edit/1', 'New activity', 'btn primary')
   );
@@ -371,29 +386,26 @@ function adminActivityEditor(id, stepParam) {
     publication.testTemplateId = data.templates.tests[0]?.id || null;
   }
   const resolved = activityContext(data, publication);
-  const step = Math.min(Math.max(Number(stepParam) || 1, 1), 6);
   const requiresTest = ACTIVITY_TYPES[publication.activityType]?.requiresTest;
-  if (existing && step !== 6) {
-    sessionStorage.removeItem(`activity-saved-${existing.id}`);
-  }
   const savedFlag = existing && sessionStorage.getItem(`activity-saved-${existing.id}`);
-
-  if (savedFlag && step === 6) {
+  if (savedFlag) {
+    sessionStorage.removeItem(`activity-saved-${existing.id}`);
     const publicUrl = `${location.origin}${location.pathname}#/learn/${existing.slug}`;
     const content = `
+      ${nextStepBanner(existing.status === 'published' ? 'This activity is live for learners. Open the Learner portal to confirm it appears.' : 'Publish this activity so learners can see it.', existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish now</button>` : routeLink('learn', 'Open Learner portal', 'btn primary'))}
       <section class="wizard-page celebrate">
         <div class="celebrate-link">
           <h2>Activity saved</h2>
-          <p>Your activity is ready. Share the link below or preview the learner experience.</p>
+          <p>Everything below is ready. Learners only see this after you publish.</p>
           <div class="published-link large"><span>${escapeHtml(publicUrl)}</span><button class="btn primary" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link</button></div>
           <div class="celebrate-actions">
             ${routeLink(`preview/${existing.id}`, 'Preview', 'btn secondary')}
-            ${existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish</button>` : `<button class="btn ghost" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link again</button>`}
+            ${existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish</button>` : ''}
             ${routeLink('admin/activities', 'Back to activities', 'btn ghost')}
           </div>
         </div>
       </section>`;
-    return adminShell('Activity saved', 'Your changes have been saved as a new version.', content, 'activities');
+    return adminShell('Activity saved', 'Saved. Publish when you want learners to see it.', content, 'activities');
   }
 
   const objectivesText = (publication.objectives || preset.objectives).join('\n');
@@ -406,212 +418,162 @@ function adminActivityEditor(id, stepParam) {
   const endDateValue = draft.endDate ?? defaults.endDate ?? resolved?.module?.endDate ?? '';
   const certTemplate = ACTIVITY_TYPES[publication.activityType]?.certificateTemplate || publication.certificateTemplateId;
   const cosponsorValue = draft.cosponsor ?? defaults.cosponsor ?? preset.cosponsor ?? 'Sensorimotor Psychotherapy Institute';
-
-  const hiddenFields = (currentStep) => {
-    const fields = {
-      activityType: publication.activityType,
-      courseId: publication.courseId,
-      versionId: publication.versionId,
-      cohortId: publication.cohortId,
-      moduleId: publication.moduleId,
-      location: locationValue,
-      creditHours: creditHoursValue,
-      startDate: startDateValue,
-      endDate: endDateValue,
-      presenters: presentersText,
-      cosponsor: cosponsorValue,
-      deadline: publication.deadline,
-      objectives: objectivesText,
-      evaluationTemplateId: publication.evaluationTemplateId,
-      testTemplateId: publication.testTemplateId || '',
-      certificateTemplateId: certTemplate
-    };
-    return Object.entries(fields)
-      .filter(([name]) => {
-        if (currentStep === 1 && name === 'activityType') return false;
-        if (currentStep === 2 && ['courseId', 'versionId', 'cohortId', 'moduleId'].includes(name)) return false;
-        if (currentStep === 3 && ['location', 'creditHours', 'startDate', 'endDate', 'presenters', 'deadline', 'cosponsor'].includes(name)) return false;
-        if (currentStep === 4 && ['objectives', 'evaluationTemplateId', 'certificateTemplateId'].includes(name)) return false;
-        if (currentStep === 5 && name === 'testTemplateId') return false;
-        return true;
-      })
-      .map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`)
-      .join('');
-  };
-
-  const stepLabels = [
-    'Activity type',
-    'Course details',
-    'Dates and place',
-    'Objectives',
-    requiresTest ? 'Knowledge check' : 'Knowledge check',
-    'Review'
-  ];
-
-  const step1 = `
-    <section class="wizard-page" data-wizard-step="1">
-      <h2>What kind of activity?</h2>
-      <p>Choose the format that best matches how learners will complete this activity.</p>
-      <div class="type-choice-grid">
-        ${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `
-          <label class="type-choice">
-            <input type="radio" name="activityType" value="${value}" ${publication.activityType === value ? 'checked' : ''} required>
-            <span><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(ACTIVITY_TYPE_HELP[value])}</span></span>
-          </label>`).join('')}
-      </div>
-    </section>`;
-
-  const step2 = `
-    <section class="wizard-page" data-wizard-step="2">
-      <h2>Which course, class group, and module?</h2>
-      <p>These are filled in for you. Change them only if you need something different.</p>
-      <div class="form-grid two">
-        <label>Course<select name="courseId">${selectOptions(data.courses, publication.courseId, (item) => item.name)}</select></label>
-        <label>Version<select name="versionId">${selectOptions(data.versions, publication.versionId, (item) => `${byId(data.courses, item.courseId)?.name} — ${item.name}`)}</select></label>
-        <label>Class group<select name="cohortId">${selectOptions(data.cohorts, publication.cohortId, (item) => `${item.name} — ${item.location}`)}</select></label>
-        <label>Module<select name="moduleId">${selectOptions(data.modules, publication.moduleId, (item) => `${item.name} — ${item.creditHours} credit hours`)}</select></label>
-      </div>
-    </section>`;
-
-  const step3 = `
-    <section class="wizard-page" data-wizard-step="3">
-      <h2>Dates, place, and presenters</h2>
-      <p>Add one presenter section per person. Each name appears on the evaluation and certificate.</p>
-      <div class="form-grid two">
-        <label>Activity location<input name="location" value="${escapeHtml(locationValue)}" required></label>
-        <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
-        <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
-        <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
-        <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline)}" required></label>
-        <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
-      </div>
-      <div class="presenter-field-list">${presenterFieldsHtml(presentersText)}</div>
-      <button type="button" class="btn secondary" data-action="add-presenter">+ Add another presenter</button>
-      <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
-    </section>`;
-
-  const step4 = `
-    <section class="wizard-page" data-wizard-step="4">
-      <h2>Objectives and evaluation</h2>
-      <p>Enter at least four learning objectives — one per line. Learners will rate each objective on a 1–5 scale.</p>
-      <label>Learning objectives<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
-      <label>Evaluation template<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} · v${item.version}`)}</select></label>
-      <input type="hidden" name="certificateTemplateId" value="${escapeHtml(certTemplate)}">
-      <p class="muted">Certificate layout is chosen automatically (Live vs. Home Study). Edit knowledge checks under Templates.</p>
-    </section>`;
-
-  const step5 = requiresTest ? `
-    <section class="wizard-page" data-wizard-step="5">
-      <h2>Home study knowledge check</h2>
-      <p>Choose the question set for this activity. You can edit questions under <strong>Templates → Knowledge check</strong>.</p>
-      <label>Knowledge check template<select name="testTemplateId" required>${selectOptions(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id, (item) => `${item.name} · ${item.passPercent}% to pass · ${item.questions.length} questions`)}</select></label>
-      ${data.templates.tests[0] ? routeLink(`admin/test/${publication.testTemplateId || data.templates.tests[0].id}`, 'Edit questions in this template', 'text-action') : ''}
-    </section>` : `
-    <section class="wizard-page" data-wizard-step="5">
-      <h2>Knowledge check</h2>
-      <p>No knowledge check needed for Live activities. Continue to review.</p>
-    </section>`;
-
-  const courseName = byId(data.courses, publication.courseId)?.name || '';
-  const cohortName = byId(data.cohorts, publication.cohortId)?.name || '';
-  const moduleName = byId(data.modules, publication.moduleId)?.name || '';
-  const step6 = `
-    <section class="wizard-page" data-wizard-step="6">
-      <h2>Review your activity</h2>
-      <p>Check everything looks right, then save.</p>
-      <dl class="review-list">
-        <div><dt>Activity type</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)}</dd></div>
-        <div><dt>Course</dt><dd>${escapeHtml(courseName)}</dd></div>
-        <div><dt>Class group</dt><dd>${escapeHtml(cohortName)}</dd></div>
-        <div><dt>Module</dt><dd>${escapeHtml(moduleName)}</dd></div>
-        <div><dt>Location</dt><dd>${escapeHtml(locationValue)}</dd></div>
-        <div><dt>Credit hours</dt><dd>${escapeHtml(creditHoursValue)}</dd></div>
-        <div><dt>Deadline</dt><dd>${formatDate(publication.deadline)}</dd></div>
-        <div><dt>Presenters</dt><dd>${escapeHtml(parsePresenters(presentersText).filter(Boolean).join(', ') || 'None')}</dd></div>
-        <div><dt>Objectives</dt><dd>${(objectivesText.split('\n').filter(Boolean).length)} entered</dd></div>
-        ${requiresTest ? `<div><dt>Knowledge check</dt><dd>${escapeHtml(byId(data.templates.tests, publication.testTemplateId || data.templates.tests[0]?.id)?.name || 'Selected')}</dd></div>` : ''}
-        <div><dt>Public link</dt><dd>Will be created from course name</dd></div>
-      </dl>
-      <button class="btn primary full" type="submit">Save activity</button>
-    </section>`;
-
-  const steps = [step1, step2, step3, step4, step5, step6];
-  const currentPage = steps[step - 1];
+  const testId = publication.testTemplateId || data.templates.tests[0]?.id;
 
   const content = `
-    <form id="activity-form" class="wizard-layout" data-id="${escapeHtml(publication.id)}" data-step="${step}" data-draft-key="${escapeHtml(draftKey)}">
-      <div class="named-steps wizard-steps">
-        ${stepLabels.map((label, index) => {
-          const stepNum = index + 1;
-          const skipped = stepNum === 5 && !requiresTest;
-          const stateClass = stepNum === step ? 'active' : stepNum < step ? 'done' : '';
-          return `<button type="button" class="${stateClass}${skipped && step > 5 ? ' done' : ''}" data-action="wizard-goto" data-step="${stepNum}" ${skipped ? 'aria-label="Skipped for Live activities"' : ''}>${escapeHtml(label)}</button>`;
-        }).join('')}
-      </div>
-      <div class="wizard-hidden" hidden>${hiddenFields(step)}</div>
-      <div class="wizard-panel">
-        ${currentPage}
-        <div class="form-navigation wizard-nav">
-          ${step > 1 ? `<button type="button" class="btn ghost" data-action="wizard-prev">Previous</button>` : routeLink('admin/activities', 'Cancel', 'btn ghost')}
-          ${step < 6 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : ''}
+    ${nextStepBanner('Fill in every section on this page, then press Save at the bottom. Nothing is hidden in another step.')}
+    <form id="activity-form" class="flat-editor" data-id="${escapeHtml(publication.id)}" data-step="6" data-draft-key="${escapeHtml(draftKey)}">
+      <section class="editor-card flat-section" id="section-type">
+        <div class="section-heading tight"><h2>1. Activity type</h2>${statusBadge(publication.status || 'draft')}</div>
+        <div class="type-choice-grid">
+          ${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `
+            <label class="type-choice">
+              <input type="radio" name="activityType" value="${value}" ${publication.activityType === value ? 'checked' : ''} required>
+              <span><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(ACTIVITY_TYPE_HELP[value])}</span></span>
+            </label>`).join('')}
         </div>
+      </section>
+      <section class="editor-card flat-section" id="section-course">
+        <div class="section-heading tight"><h2>2. Course and class</h2></div>
+        <div class="form-grid two">
+          <label>Course<select name="courseId">${selectOptions(data.courses, publication.courseId, (item) => item.name)}</select></label>
+          <label>Version<select name="versionId">${selectOptions(data.versions, publication.versionId, (item) => `${byId(data.courses, item.courseId)?.name} - ${item.name}`)}</select></label>
+          <label>Class group<select name="cohortId">${selectOptions(data.cohorts, publication.cohortId, (item) => `${item.name} - ${item.location}`)}</select></label>
+          <label>Module<select name="moduleId">${selectOptions(data.modules, publication.moduleId, (item) => `${item.name} - ${item.creditHours} credit hours`)}</select></label>
+        </div>
+      </section>
+      <section class="editor-card flat-section" id="section-schedule">
+        <div class="section-heading tight"><h2>3. Dates, place, and presenters</h2></div>
+        <div class="form-grid two">
+          <label>Activity location<input name="location" value="${escapeHtml(locationValue)}" required></label>
+          <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
+          <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
+          <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
+          <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline)}" required></label>
+          <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
+        </div>
+        <div class="presenter-field-list">${presenterFieldsHtml(presentersText)}</div>
+        <button type="button" class="btn secondary" data-action="add-presenter">+ Add another presenter</button>
+        <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
+      </section>
+      <section class="editor-card flat-section" id="section-objectives">
+        <div class="section-heading tight"><h2>4. Objectives and evaluation form</h2>
+          ${publication.evaluationTemplateId ? pencilBtn('goto-eval-template', publication.evaluationTemplateId, 'Edit form questions') : ''}
+        </div>
+        <p class="muted">Enter at least four objectives (one per line). Learners rate each on a 1-5 scale.</p>
+        <label>Learning objectives<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
+        <label>Evaluation form<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} | v${item.version}`)}</select></label>
+        <input type="hidden" name="certificateTemplateId" value="${escapeHtml(certTemplate)}">
+      </section>
+      ${requiresTest ? `
+      <section class="editor-card flat-section" id="section-test">
+        <div class="section-heading tight"><h2>5. Knowledge check</h2>
+          ${testId ? pencilBtn('goto-test-template', testId, 'Edit knowledge check') : ''}
+        </div>
+        <label>Knowledge check<select name="testTemplateId" required>${selectOptions(data.templates.tests, testId, (item) => `${item.name} | ${item.passPercent}% | ${item.questions.length} questions`)}</select></label>
+        <p class="muted">Use the pencil to rename or edit questions. Duplicated checks keep their own editable name.</p>
+      </section>` : '<input type="hidden" name="testTemplateId" value="">'}
+      <div class="sticky-actions flat-save">
+        ${routeLink('admin/activities', 'Cancel', 'btn ghost')}
+        <button class="btn primary" type="submit">Save activity</button>
       </div>
     </form>`;
 
   return adminShell(
     existing ? 'Edit activity' : 'Create activity',
-    existing ? 'Each save creates a new version. Past responses stay unchanged.' : 'Follow the steps below to set up your activity.',
+    'All fields are on this one page. Scroll, edit, then Save.',
     content,
     'activities'
   );
 }
 
+
 function adminTemplates() {
   const data = state();
   const evaluationCards = data.templates.evaluations.map((template) => `
     <article class="template-card">
-      <div class="template-icon">E</div><div><div class="activity-topline"><span class="type-chip">Evaluation</span><span>Version ${template.version}</span></div><h2>${escapeHtml(template.name)}</h2><p>Four locked standard sections with dynamic objectives and presenter blocks.</p></div>
-      <div class="template-actions">${routeLink(`admin/template/${template.id}`, 'View & edit', 'btn secondary')}<button class="btn ghost" data-action="duplicate-template" data-id="${template.id}">Duplicate</button></div>
+      <div class="template-icon">E</div>
+      <div>
+        <div class="activity-topline"><span class="type-chip">Evaluation</span><span>Version ${template.version}</span></div>
+        <h2>${escapeHtml(template.name)}</h2>
+        <p>All sections editable. Objectives and presenters still come from each activity.</p>
+      </div>
+      <div class="template-actions">
+        ${pencilBtn('goto-eval-template', template.id, 'Edit')}
+        <button class="btn ghost" data-action="duplicate-template" data-id="${template.id}">Duplicate</button>
+      </div>
     </article>`).join('');
   const testCards = data.templates.tests.map((template) => `
     <article class="template-card">
-      <div class="template-icon">T</div><div><span class="type-chip">Knowledge check</span><h3>${escapeHtml(template.name)}</h3><p>${template.questions.length} multiple-choice questions · ${template.passPercent}% to pass · ${template.maxAttempts} attempts</p></div>
-      <div class="template-actions">${routeLink(`admin/test/${template.id}`, 'Edit questions', 'btn secondary')}<button class="btn ghost" data-action="duplicate-test" data-id="${template.id}">Duplicate</button></div>
+      <div class="template-icon">T</div>
+      <div>
+        <div class="activity-topline"><span class="type-chip">Knowledge check</span><span>Version ${template.version || 1}</span></div>
+        <h3>${escapeHtml(template.name)}</h3>
+        <p>${template.questions.length} questions | ${template.passPercent}% to pass | ${template.maxAttempts} attempts</p>
+      </div>
+      <div class="template-actions">
+        ${pencilBtn('goto-test-template', template.id, 'Edit')}
+        <button class="btn ghost" data-action="duplicate-test" data-id="${template.id}">Duplicate</button>
+      </div>
     </article>`).join('');
   const certCards = data.templates.certificates.map((template) => `
-    <article class="template-card compact"><div class="template-icon">C</div><div><span class="type-chip">Certificate</span><h3>${escapeHtml(template.name)}</h3><p>White background, slate-blue frame, and CE wording for Live or Home Study activities.</p></div></article>`).join('');
+    <article class="template-card compact"><div class="template-icon">C</div><div><span class="type-chip">Certificate</span><h3>${escapeHtml(template.name)}</h3><p>White background, slate-blue frame, Live or Home Study wording.</p></div></article>`).join('');
   const content = `
-    <section class="section-heading standalone"><div><p class="eyebrow">Evaluation templates</p><h2>Standard CE sections plus activity-specific fields</h2><p>Standard Learning, Presenter, Environment, and Administration wording stays locked. Objectives, presenter names, dates, and credits are set when you create each activity.</p></div></section>
+    ${nextStepBanner('Pick a form or knowledge check, press the pencil to edit names and questions on one page.')}
+    <section class="section-heading standalone"><div><p class="eyebrow">Evaluation forms</p><h2>Edit every question</h2><p>Rename, rewrite, add, or remove questions. Changes apply to activities that use this form.</p></div></section>
     <div class="template-grid">${evaluationCards}</div>
-    <section class="section-heading standalone lower"><div><p class="eyebrow">Home study knowledge checks</p><h2>Build and update test questions here</h2><p>Question type available today: single-answer multiple choice (use two options for true/false).</p></div></section>
+    <section class="section-heading standalone lower"><div><p class="eyebrow">Knowledge checks</p><h2>Home study tests</h2><p>Rename even after Duplicate. Multiple choice (two options works as true/false).</p></div>
+      <button class="btn primary" data-action="create-test">+ New knowledge check</button>
+    </section>
     <div class="template-grid">${testCards}</div>
     <section class="section-heading standalone lower"><div><p class="eyebrow">Certificates</p><h2>Automatic layouts</h2></div></section>
     <div class="template-grid two-col">${certCards}</div>`;
-  return adminShell('Templates', 'Create a reliable baseline once, then reuse it across class groups and modules.', content, 'templates');
+  return adminShell('Templates', 'Forms and knowledge checks stay one click from this list.', content, 'templates');
 }
 
 function adminTemplateEditor(id) {
   const data = state();
   const template = byId(data.templates.evaluations, id);
-  if (!template) return adminShell('Template not found', 'Return to the template library.', emptyState('Template unavailable', 'This template may have been removed.', routeLink('admin/templates', 'Back to templates', 'btn primary')), 'templates');
-  const locked = [
-    ['Learning', STANDARD_QUESTIONS.learning],
-    ['Presenter', STANDARD_QUESTIONS.presenter],
-    ['Environment', STANDARD_QUESTIONS.environment],
-    ['Administration', STANDARD_QUESTIONS.administration]
+  if (!template) {
+    return adminShell('Template not found', 'Return to templates.', emptyState('Template unavailable', 'This form may have been removed.', routeLink('admin/templates', 'Back to templates', 'btn primary')), 'templates');
+  }
+  const sections = templateQuestionBank(template);
+  const sectionOrder = [
+    ['learning', 'Learning'],
+    ['presenter', 'Presenter'],
+    ['environment', 'Environment'],
+    ['administration', 'Administration'],
+    ['written', 'Written feedback']
   ];
+  const blocks = sectionOrder.map(([key, label]) => {
+    const questions = sections[key] || [];
+    return `
+      <section class="editor-card flat-section" data-section="${key}">
+        <div class="section-heading tight"><h2>${escapeHtml(label)}</h2>
+          <button type="button" class="btn secondary small" data-action="add-eval-question" data-section="${key}">+ Add question</button>
+        </div>
+        <div class="eval-question-list" data-section="${key}">
+          ${questions.map((question, index) => `
+            <div class="eval-question-row" data-qid="${escapeHtml(question.id)}">
+              <label>Question ${index + 1}
+                <textarea name="${key}.${question.id}" rows="2" required>${escapeHtml(question.text)}</textarea>
+              </label>
+              <button type="button" class="btn ghost small" data-action="remove-eval-question">Remove</button>
+            </div>`).join('') || '<p class="muted">No questions yet. Add one.</p>'}
+        </div>
+      </section>`;
+  }).join('');
   const content = `
+    ${nextStepBanner('Change the form name or any question text, then Save. Learners see these words on the evaluation.')}
     <form id="template-form" data-id="${template.id}">
       <section class="editor-card template-editor-head">
-        <label>Template name<input name="name" value="${escapeHtml(template.name)}" required></label>
-        <div><span class="status ${template.status}">${escapeHtml(template.status)}</span><p>Version ${template.version}</p></div>
+        <label>Form name (editable anytime, including copies)<input name="name" value="${escapeHtml(template.name)}" required></label>
+        <div><span class="status ${template.status || 'active'}">${escapeHtml(template.status || 'active')}</span><p>Version ${template.version}</p></div>
       </section>
-      <section class="locked-banner"><div><strong>Standard wording is locked</strong><p>These questions remain verbatim across every generated evaluation.</p></div><span>${locked.reduce((total, [, questions]) => total + questions.length, 0)} standard questions</span></section>
-      <div class="locked-grid">${locked.map(([name, questions]) => `<details class="locked-section"><summary><span>${escapeHtml(name)}</span><strong>${questions.length} questions</strong></summary><ol>${questions.map((question) => `<li>${escapeHtml(question.text)}</li>`).join('')}</ol></details>`).join('')}</div>
-      <section class="dynamic-slots"><p class="eyebrow">Edit per activity (Create activity wizard)</p><h2>Fields you can update anytime</h2><div class="slot-grid"><span>Objectives (4 or more, Likert-rated)</span><span>Add/remove presenters by name</span><span>Dates, location, credit hours</span><span>Cosponsor on certificate</span><span>Knowledge check template (Home Study)</span></div></section>
-      <div class="sticky-actions">${routeLink('admin/templates', 'Back', 'btn ghost')}<button type="submit" class="btn primary">Save template name</button></div>
+      ${blocks}
+      <div class="sticky-actions">${routeLink('admin/templates', 'Back', 'btn ghost')}<button type="submit" class="btn primary">Save evaluation form</button></div>
     </form>`;
-  return adminShell('Evaluation template', 'Rename or duplicate this template. Standard CE question wording stays fixed.', content, 'templates');
+  return adminShell('Edit evaluation form', 'Every question is editable. Nothing is locked.', content, 'templates');
 }
 
 function adminTestEditor(id) {
@@ -625,29 +587,31 @@ function adminTestEditor(id) {
       <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
       <label>Question text<textarea name="q_${index}_text" rows="2" required>${escapeHtml(question.text)}</textarea></label>
       <div class="form-grid two">
-        ${question.options.map((option, optionIndex) => `
-          <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" required></label>`).join('')}
+        ${(question.options || ['', '', '', '']).concat(['', '', '', '']).slice(0, 4).map((option, optionIndex) => `
+          <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${optionIndex < 2 ? 'required' : ''}></label>`).join('')}
       </div>
-      <label>Correct answer<select name="q_${index}_correct">${question.options.map((option, optionIndex) => `
-        <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}: ${escapeHtml(option.slice(0, 48))}${option.length > 48 ? '…' : ''}</option>`).join('')}</select></label>
-      <label>Linked objective (0 = first objective)<input type="number" min="0" step="1" name="q_${index}_objective" value="${Number(question.objectiveIndex) || 0}"></label>
+      <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
+        <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
+      <label>Linked objective number (0 = first)<input type="number" min="0" step="1" name="q_${index}_objective" value="${Number(question.objectiveIndex) || 0}"></label>
     </article>`).join('');
   const content = `
+    ${nextStepBanner('Rename this knowledge check anytime (including after Duplicate), edit questions, then Save.')}
     <form id="test-template-form" data-id="${template.id}" data-question-count="${template.questions.length}">
       <section class="editor-card template-editor-head">
-        <label>Template name<input name="name" value="${escapeHtml(template.name)}" required></label>
+        <label>Knowledge check name<input name="name" value="${escapeHtml(template.name)}" required></label>
         <div class="form-grid two">
           <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template.passPercent}" required></label>
           <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template.maxAttempts}" required></label>
         </div>
-        <p class="muted">Minimum 12 questions for Home Study activities. Each objective needs at least three linked questions.</p>
+        <p class="muted">Home Study activities need at least 12 questions. Each objective needs at least three linked questions.</p>
       </section>
       <div id="test-question-list">${questionBlocks}</div>
       <button type="button" class="btn secondary" data-action="add-test-question">+ Add question</button>
       <div class="sticky-actions">${routeLink('admin/templates', 'Back', 'btn ghost')}<button type="submit" class="btn primary">Save knowledge check</button></div>
     </form>`;
-  return adminShell('Knowledge check template', 'Add or update multiple-choice questions for home study activities.', content, 'templates');
+  return adminShell('Edit knowledge check', 'Name and questions stay on one page.', content, 'templates');
 }
+
 
 function collectTestTemplateForm(form) {
   const questions = [...form.querySelectorAll('.test-question-editor')].map((block, index) => {
@@ -850,7 +814,7 @@ function learnerBase(context, content, options = {}) {
   const base = preview ? `preview/${publication.id}` : `learn/${publication.slug}`;
   document.body.className = 'learner-page';
   return `
-    <header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)} activity</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>
+    <header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)} activity</span></div><div class="learner-header-actions">${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}${routeLink('learn', 'All activities', 'btn light small')}</div></header>
     ${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}
     <main class="learner-main" id="main">
       <nav class="learner-breadcrumb">${routeLink(base, 'Activity overview')}<span>/</span><span>${escapeHtml(options.label || 'Details')}</span></nav>
@@ -916,7 +880,7 @@ function learnerLanding(context, preview = false) {
       </dl>
     </details>`;
   document.body.className = 'learner-page';
-  return `<header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>Continuing education</span></div>${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}</header>${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}<main class="learner-main" id="main">${content}</main>`;
+  return `<header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>Continuing education</span></div><div class="learner-header-actions">${preview ? routeLink('admin/activities', 'Exit preview', 'btn light small') : ''}${routeLink('learn', 'All activities', 'btn light small')}</div></header>${preview ? '<div class="preview-banner"><strong>Admin learner preview</strong><span>This draft can be reviewed without publishing.</span></div>' : ''}<main class="learner-main" id="main">${content}</main>`;
 }
 
 const SCALE = [
@@ -951,18 +915,19 @@ function evaluationPages(context, draft) {
     license: 'LCSW-12345',
     ...(draft.learner || {})
   };
+  const bank = templateQuestionBank(context.evaluationTemplate);
   const presenters = context.cohort?.presenters?.length
     ? context.cohort.presenters
     : ['Presenter name not set'];
   const presenterQuestions = presenters.flatMap((presenter, presenterIndex) => [
-    `<div class="presenter-heading"><span>${presenterIndex + 1}</span><div><h2>Presenter: ${escapeHtml(presenter)}</h2><p>Please rate this presenter using the same 1–5 scale.</p></div></div>`,
-    ...STANDARD_QUESTIONS.presenter.map((question) => ratingQuestion(`presenter.${presenterIndex}.${question.id}`, question, draft.ratings?.[`presenter.${presenterIndex}.${question.id}`]))
+    `<div class="presenter-heading"><span>${presenterIndex + 1}</span><div><h2>Presenter: ${escapeHtml(presenter)}</h2><p>Please rate this presenter using the same 1-5 scale.</p></div></div>`,
+    ...(bank.presenter || []).map((question) => ratingQuestion(`presenter.${presenterIndex}.${question.id}`, question, draft.ratings?.[`presenter.${presenterIndex}.${question.id}`]))
   ]);
   return [
     {
       title: 'Learning',
       subtitle: 'Tell us how effectively this activity supported your learning.',
-      body: STANDARD_QUESTIONS.learning.map((question) => ratingQuestion(`learning.${question.id}`, question, draft.ratings?.[`learning.${question.id}`])).join('')
+      body: (bank.learning || []).map((question) => ratingQuestion(`learning.${question.id}`, question, draft.ratings?.[`learning.${question.id}`])).join('')
     },
     {
       title: 'Objectives',
@@ -979,17 +944,17 @@ function evaluationPages(context, draft) {
     {
       title: 'Environment',
       subtitle: 'Rate the learning environment and technical support.',
-      body: STANDARD_QUESTIONS.environment.map((question) => ratingQuestion(`environment.${question.id}`, question, draft.ratings?.[`environment.${question.id}`])).join('')
+      body: (bank.environment || []).map((question) => ratingQuestion(`environment.${question.id}`, question, draft.ratings?.[`environment.${question.id}`])).join('')
     },
     {
       title: 'Administration',
       subtitle: 'Rate program administration and disclosures.',
-      body: STANDARD_QUESTIONS.administration.map((question) => ratingQuestion(`administration.${question.id}`, question, draft.ratings?.[`administration.${question.id}`])).join('')
+      body: (bank.administration || []).map((question) => ratingQuestion(`administration.${question.id}`, question, draft.ratings?.[`administration.${question.id}`])).join('')
     },
     {
       title: 'Your information',
       subtitle: 'Your details are filled in. Click continue when you are ready.',
-      body: `<div class="feedback-grid">${STANDARD_QUESTIONS.written.map((question) => `<label>${escapeHtml(question.text)}<textarea name="comment.${question.id}" placeholder="Optional">${escapeHtml(draft.comments?.[question.id] || '')}</textarea></label>`).join('')}</div><div class="subsection-title">Certificate information</div><div class="form-grid two"><label>First name<input name="firstName" value="${escapeHtml(learnerDefaults.firstName)}" required></label><label>Last name<input name="lastName" value="${escapeHtml(learnerDefaults.lastName)}" required></label><label>Credential<input name="credential" value="${escapeHtml(learnerDefaults.credential)}" placeholder="LCSW, PhD, LMFT"></label><label>Email address<input type="email" name="email" value="${escapeHtml(learnerDefaults.email)}" required></label><label class="span-two">Professional license number<input name="license" value="${escapeHtml(learnerDefaults.license)}" required></label></div>`
+      body: `<div class="feedback-grid">${(bank.written || []).map((question) => `<label>${escapeHtml(question.text)}<textarea name="comment.${question.id}" placeholder="Optional">${escapeHtml(draft.comments?.[question.id] || '')}</textarea></label>`).join('')}</div><div class="subsection-title">Certificate information</div><div class="form-grid two"><label>First name<input name="firstName" value="${escapeHtml(learnerDefaults.firstName)}" required></label><label>Last name<input name="lastName" value="${escapeHtml(learnerDefaults.lastName)}" required></label><label>Credential<input name="credential" value="${escapeHtml(learnerDefaults.credential)}" placeholder="LCSW, PhD, LMFT"></label><label>Email address<input type="email" name="email" value="${escapeHtml(learnerDefaults.email)}" required></label><label class="span-two">Professional license number<input name="license" value="${escapeHtml(learnerDefaults.license)}" required></label></div>`
     }
   ];
 }
@@ -1104,11 +1069,48 @@ function findLearnerContext(parts) {
   return { context: activityContext(data, publication), preview: false, offset: 2 };
 }
 
+function learnerCatalog() {
+  const data = state();
+  const published = data.publications.filter((item) => item.status === 'published');
+  const cards = published.map((publication) => {
+    const context = activityContext(data, publication);
+    const expired = isExpired(publication);
+    return `
+      <article class="learner-catalog-card ${expired ? 'is-expired' : ''}">
+        <div class="activity-topline"><span class="type-chip">${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label)}</span><span>${expired ? 'Closed' : 'Open'}</span></div>
+        <h2>${escapeHtml(context.course?.name || 'Activity')}</h2>
+        <p>${escapeHtml(context.cohort?.name || '')} · ${context.module?.creditHours || 0} CE hours</p>
+        <p class="muted">Deadline ${formatDate(publication.deadline)} · ${escapeHtml((context.cohort?.presenters || []).join(', ') || 'Presenters TBA')}</p>
+        ${expired
+          ? '<button class="btn ghost" disabled>Completion window closed</button>'
+          : routeLink(`learn/${publication.slug}`, 'Open this activity', 'btn primary')}
+      </article>`;
+  }).join('');
+  document.body.className = 'learner-page';
+  return `
+    <header class="learner-header">
+      <div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>Learner portal</span></div>
+      ${routeLink('admin/dashboard', 'Admin portal', 'btn light small')}
+    </header>
+    <main class="learner-main" id="main">
+      ${nextStepBanner(published.length ? 'Choose an activity below. Only published activities appear here.' : 'No published activities yet. An administrator must publish one first.', routeLink('admin/activities', 'Go to Admin activities', 'btn secondary'))}
+      <section class="section-heading standalone"><div><h1>Your continuing education activities</h1><p>Everything an administrator publishes shows up on this page.</p></div></section>
+      <div class="learner-catalog-grid">${cards || emptyState('Nothing published yet', 'When an administrator publishes an activity, it will appear here automatically.', routeLink('admin/dashboard', 'Open Admin', 'btn primary'))}</div>
+    </main>`;
+}
+
+function learnerShell(inner, actions = '') {
+  document.body.className = 'learner-page';
+  return `<header class="learner-header"><div><img src="assets/logo.png?v=3" alt="Lifespan Learning Institute"><span>Continuing education</span></div><div class="learner-header-actions">${routeLink('learn', 'All activities', 'btn light small')}${actions}</div></header>${inner}`;
+}
+
 function renderLearner(parts) {
+  if (parts[0] === 'learn' && !parts[1]) {
+    return learnerCatalog();
+  }
   const { context, preview, offset } = findLearnerContext(parts);
   if (!context) {
-    document.body.className = 'learner-page';
-    return `<main class="learner-main">${emptyState('Activity not available', 'This link is invalid, unpublished, or no longer available.', routeLink('admin/dashboard', 'Open admin demo', 'btn primary'))}</main>`;
+    return learnerShell(`<main class="learner-main">${emptyState('Activity not available', 'This link is invalid, unpublished, or no longer available.', routeLink('learn', 'Back to all activities', 'btn primary'))}</main>`);
   }
   const screen = parts[offset] || 'overview';
   if (screen === 'evaluation') return learnerEvaluation(context, parts[offset + 1] || 0, preview);
@@ -1250,9 +1252,26 @@ document.addEventListener('submit', (event) => {
     return;
   }
   if (form.id === 'template-form') {
-    store.renameEvaluationTemplate(form.dataset.id, new FormData(form).get('name'));
-    toast('Template saved as a new version.');
-    render();
+    const sections = {};
+    ['learning', 'presenter', 'environment', 'administration', 'written'].forEach((key) => {
+      sections[key] = [...form.querySelectorAll(`.eval-question-list[data-section="${key}"] .eval-question-row`)].map((row, index) => {
+        const textarea = row.querySelector('textarea');
+        const existingId = row.dataset.qid || `${key}-${index + 1}`;
+        return {
+          id: existingId,
+          text: textarea?.value?.trim() || `Question ${index + 1}`
+        };
+      }).filter((item) => item.text);
+    });
+    const result = store.saveEvaluationTemplate(form.dataset.id, {
+      name: new FormData(form).get('name'),
+      sections
+    });
+    if (!result.ok) toast(result.errors.join(' '), 'error');
+    else {
+      toast('Evaluation form saved.');
+      render();
+    }
     return;
   }
   if (form.id === 'test-template-form') {
@@ -1331,6 +1350,17 @@ document.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('change', (event) => {
+  if (event.target.name === 'activityType' && event.target.closest('#activity-form')) {
+    const form = event.target.closest('#activity-form');
+    const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
+    const draft = loadWizardDraft(draftKey);
+    const formData = new FormData(form);
+    for (const [key, value] of formData.entries()) draft[key] = value;
+    const next = applyActivityTypePreset(draft, state(), event.target.value);
+    saveWizardDraft(draftKey, next);
+    render();
+    return;
+  }
   if (event.target.id === 'report-filter') {
     location.hash = `#/admin/reports/${event.target.value}`;
   } else if (event.target.id === 'report-date-from' || event.target.id === 'report-date-to') {
@@ -1419,8 +1449,33 @@ document.addEventListener('click', async (event) => {
     location.hash = `#/admin/template/${duplicate.id}`;
   } else if (action === 'duplicate-test') {
     const duplicate = store.duplicateTestTemplate(id);
-    toast('Knowledge check duplicated.');
+    toast('Knowledge check duplicated. You can rename it on the next screen.');
     location.hash = `#/admin/test/${duplicate.id}`;
+  } else if (action === 'create-test') {
+    const created = store.createTestTemplate('New Knowledge Check');
+    toast('New knowledge check created.');
+    location.hash = `#/admin/test/${created.id}`;
+  } else if (action === 'goto-eval-template') {
+    location.hash = `#/admin/template/${id}`;
+  } else if (action === 'goto-test-template') {
+    location.hash = `#/admin/test/${id}`;
+  } else if (action === 'goto-activity-edit') {
+    location.hash = `#/admin/activity/${id}/edit/1`;
+  } else if (action === 'add-eval-question') {
+    const section = target.dataset.section;
+    const list = document.querySelector(`.eval-question-list[data-section="${section}"]`);
+    if (!list) return;
+    const index = list.querySelectorAll('.eval-question-row').length + 1;
+    const qid = `${section}-new-${Date.now().toString(36)}`;
+    list.insertAdjacentHTML('beforeend', `
+      <div class="eval-question-row" data-qid="${qid}">
+        <label>Question ${index}
+          <textarea name="${section}.${qid}" rows="2" required></textarea>
+        </label>
+        <button type="button" class="btn ghost small" data-action="remove-eval-question">Remove</button>
+      </div>`);
+  } else if (action === 'remove-eval-question') {
+    target.closest('.eval-question-row')?.remove();
   } else if (action === 'add-presenter') {
     const list = document.querySelector('.presenter-field-list');
     const form = document.querySelector('#activity-form');

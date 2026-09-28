@@ -146,6 +146,12 @@ export function uid(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+export function evaluationSections(template) {
+  const sections = template?.sections;
+  if (sections?.learning?.length) return sections;
+  return null;
+}
+
 export function formatDate(value) {
   if (!value) return 'Not set';
   const date = new Date(`${value}T12:00:00`);

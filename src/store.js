@@ -1,4 +1,4 @@
-import { createSeedState } from './seed.js';
+import { cloneStandardSections, createSeedState } from './seed.js';
 import {
   activityContext,
   makePublicationSnapshot,
@@ -7,13 +7,36 @@ import {
   validatePublication
 } from './domain.js';
 
-const STORAGE_KEY = 'lifespan-lms-prototype-v5';
+const STORAGE_KEY = 'lifespan-lms-prototype-v6';
 let state = load();
+
+function ensureEvaluationSections(template) {
+  if (!template.sections) {
+    template.sections = cloneStandardSections();
+  }
+  return template;
+}
+
+function migrate(saved) {
+  if (!saved || typeof saved !== 'object') return null;
+  saved.schemaVersion = 6;
+  (saved.templates?.evaluations || []).forEach(ensureEvaluationSections);
+  (saved.templates?.tests || []).forEach((template) => {
+    if (!template.version) template.version = 1;
+  });
+  return saved;
+}
 
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (saved?.schemaVersion === 5) return saved;
+    if (saved?.schemaVersion === 6) {
+      (saved.templates?.evaluations || []).forEach(ensureEvaluationSections);
+      return saved;
+    }
+    // Soft-migrate from v5
+    const legacy = JSON.parse(localStorage.getItem('lifespan-lms-prototype-v5') || 'null');
+    if (legacy) return migrate(legacy);
   } catch {
     // Fall through to a clean demo state.
   }
@@ -90,6 +113,7 @@ export const store = {
   duplicateEvaluationTemplate(templateId) {
     const source = state.templates.evaluations.find((item) => item.id === templateId);
     if (!source) return null;
+    ensureEvaluationSections(source);
     const duplicate = {
       ...structuredClone(source),
       id: uid('eval'),
@@ -103,13 +127,20 @@ export const store = {
     return duplicate;
   },
 
-  renameEvaluationTemplate(templateId, name) {
+  saveEvaluationTemplate(templateId, input) {
     const template = state.templates.evaluations.find((item) => item.id === templateId);
-    if (!template || !name.trim()) return false;
-    template.name = name.trim();
-    template.version += 1;
+    if (!template) return { ok: false, errors: ['Evaluation template not found.'] };
+    ensureEvaluationSections(template);
+    if (input.name?.trim()) template.name = input.name.trim();
+    if (input.sections) template.sections = input.sections;
+    template.version = (template.version || 1) + 1;
+    template.status = template.status || 'active';
     persist();
-    return true;
+    return { ok: true, template };
+  },
+
+  renameEvaluationTemplate(templateId, name) {
+    return this.saveEvaluationTemplate(templateId, { name }).ok;
   },
 
   saveTestTemplate(templateId, input) {
@@ -122,6 +153,21 @@ export const store = {
     template.version = (template.version || 1) + 1;
     persist();
     return { ok: true, template };
+  },
+
+  createTestTemplate(name = 'New Knowledge Check') {
+    const template = {
+      id: uid('test'),
+      name,
+      version: 1,
+      passPercent: 80,
+      maxAttempts: 3,
+      minimumQuestions: 12,
+      questions: []
+    };
+    state.templates.tests.push(template);
+    persist();
+    return template;
   },
 
   duplicateTestTemplate(templateId) {
@@ -137,6 +183,15 @@ export const store = {
     state.templates.tests.push(duplicate);
     persist();
     return duplicate;
+  },
+
+  renameTestTemplate(templateId, name) {
+    const template = state.templates.tests.find((item) => item.id === templateId);
+    if (!template || !String(name || '').trim()) return false;
+    template.name = String(name).trim();
+    template.version = (template.version || 1) + 1;
+    persist();
+    return true;
   },
 
   togglePublication(publicationId) {

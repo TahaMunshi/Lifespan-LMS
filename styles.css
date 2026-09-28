@@ -787,4 +787,66 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
   .more-panel{left:0;right:0}
   .wizard-nav .btn{flex:1}
   .guide-card{min-height:0}
+  .learner-catalog-grid{grid-template-columns:1fr}
+  .next-step-banner{flex-direction:column;align-items:stretch}
 }
+
+.btn-pencil{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:48px;
+  padding:10px 16px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#fff;
+  color:var(--navy);
+  font-size:16px;
+  font-weight:600;
+  cursor:pointer;
+}
+.btn-pencil span[aria-hidden="true"]{font-size:20px;line-height:1}
+.btn-pencil:hover{background:var(--green-soft);border-color:#b7d5a5}
+.next-step-banner{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  background:#eef6ea;
+  border:1px solid #cfe3c3;
+  border-radius:16px;
+  padding:18px 20px;
+  margin-bottom:20px;
+}
+.next-step-banner strong{display:block;color:var(--green-dark);margin-bottom:4px;font-size:15px}
+.next-step-banner p{margin:0;color:var(--muted);font-size:16px}
+.flat-editor{display:grid;gap:18px}
+.flat-section{margin:0}
+.flat-save{position:sticky;bottom:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow);z-index:5}
+.eval-question-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:start;padding:14px 0;border-top:1px solid var(--line)}
+.eval-question-row:first-child{border-top:0}
+.sidebar-learner{
+  display:block;
+  margin:16px 18px;
+  padding:14px 16px;
+  border-radius:12px;
+  background:var(--green-dark);
+  color:#fff;
+  font-weight:700;
+  text-align:center;
+}
+.sidebar-learner:hover{background:#447a27}
+.learner-header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.learner-catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+.learner-catalog-card{
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:18px;
+  padding:22px;
+  box-shadow:var(--shadow);
+  display:grid;
+  gap:10px;
+}
+.learner-catalog-card.is-expired{opacity:.75}
+.learner-catalog-card h2{margin:0;font-size:22px;color:var(--navy)}
+.learner-catalog-card .btn{justify-self:start;margin-top:8px}
