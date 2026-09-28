@@ -91,26 +91,59 @@ export function buildCertificateMarkup(certificate, template) {
     </article>`;
 }
 
-async function captureCertificateNode(node) {
+async function captureCertificateNode(mount) {
   const { default: html2canvas } = await import('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/+esm');
-  const sheet = node.querySelector('.cert-sheet') || node;
+  const sheet = mount.querySelector('.cert-sheet') || mount;
   await Promise.all([...sheet.querySelectorAll('img')].map((img) => (
-    img.complete ? Promise.resolve() : new Promise((resolve) => {
+    img.complete && img.naturalWidth ? Promise.resolve() : new Promise((resolve) => {
       img.onload = resolve;
       img.onerror = resolve;
     })
   )));
-  const scale = Math.max(2, window.devicePixelRatio || 2);
-  return html2canvas(sheet, {
-    scale,
-    backgroundColor: '#ffffff',
-    useCORS: true,
-    logging: false,
-    width: sheet.scrollWidth,
-    height: sheet.scrollHeight,
-    windowWidth: sheet.scrollWidth,
-    windowHeight: sheet.scrollHeight
-  });
+  if (document.fonts?.ready) await document.fonts.ready;
+
+  // Capture at US Letter landscape proportions so the PDF/print fills the page.
+  const captureWidth = 1100;
+  const captureHeight = Math.round(captureWidth * (8.5 / 11));
+  const clone = sheet.cloneNode(true);
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = 'position:fixed;left:-14000px;top:0;margin:0;padding:0;background:#fff;pointer-events:none;z-index:-1;';
+  clone.style.cssText = [
+    `width:${captureWidth}px`,
+    `height:${captureHeight}px`,
+    'max-width:none',
+    'aspect-ratio:11 / 8.5',
+    'box-sizing:border-box',
+    'overflow:hidden',
+    'margin:0'
+  ].join(';');
+  host.appendChild(clone);
+  document.body.appendChild(host);
+  await Promise.all([...clone.querySelectorAll('img')].map((img) => (
+    img.complete && img.naturalWidth ? Promise.resolve() : new Promise((resolve) => {
+      img.onload = resolve;
+      img.onerror = resolve;
+    })
+  )));
+
+  try {
+    return await html2canvas(clone, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: captureWidth,
+      height: captureHeight,
+      windowWidth: captureWidth,
+      windowHeight: captureHeight,
+      scrollX: 0,
+      scrollY: 0
+    });
+  } finally {
+    host.remove();
+  }
 }
 
 export async function renderCertificate(target, certificate, template) {
@@ -122,13 +155,12 @@ export async function renderCertificate(target, certificate, template) {
 
 export async function downloadCertificatePdf(mount, filename) {
   if (!mount || mount.dataset.ready !== 'true') return false;
-  const node = mount.querySelector('.certificate-document') || mount;
-  const canvas = await captureCertificateNode(node);
-  // Match the preview capture shape — do not force/stretch to a fixed landscape box.
-  const pageWidth = 842;
-  const pageHeight = Math.max(1, Math.round(pageWidth * (canvas.height / canvas.width)));
+  const canvas = await captureCertificateNode(mount);
+  // US Letter landscape — full-bleed so print "fit to page" fills the sheet.
+  const pageWidth = 792;
+  const pageHeight = 612;
   const imageBytes = Uint8Array.from(
-    atob(canvas.toDataURL('image/jpeg', 0.96).split(',')[1]),
+    atob(canvas.toDataURL('image/jpeg', 0.97).split(',')[1]),
     (character) => character.charCodeAt(0)
   );
   const encoder = new TextEncoder();
