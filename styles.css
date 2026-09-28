@@ -44,14 +44,14 @@ small{font-size:15px}
 }
 .topbar-inner{
   width:min(1120px,100%);
-  min-height:68px;
+  min-height:88px;
   margin:0 auto;
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:24px;
 }
-.form-only .topbar img{height:44px;width:auto;display:block}
+.form-only .topbar img{height:80px;width:auto;display:block}
 .form-only .topbar .meta{
   margin-left:auto;
   text-align:right;
@@ -372,8 +372,8 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .admin-page{background:#eef2f2}
 .admin-shell{min-height:100vh;display:grid;grid-template-columns:270px minmax(0,1fr)}
 .admin-sidebar{position:sticky;top:0;height:100vh;background:var(--navy);color:#fff;display:flex;flex-direction:column;z-index:30}
-.admin-brand{height:76px;display:flex;align-items:center;padding:12px 16px;background:#fff;border-bottom:4px solid var(--green)}
-.admin-brand img{height:44px;width:auto;max-width:100%;display:block}
+.admin-brand{height:88px;display:flex;align-items:center;padding:0 16px;background:#fff;border-bottom:4px solid var(--green)}
+.admin-brand img{height:100%;width:auto;max-width:100%;display:block}
 .admin-sidebar nav{padding:24px 15px;display:grid;gap:7px}
 .admin-sidebar nav a{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:11px;color:#dce7e8;font-size:14px;font-weight:600}
 .admin-sidebar nav a:hover{background:rgba(255,255,255,.08)}
@@ -438,7 +438,7 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .empty-state{text-align:center;padding:55px 24px;background:#fff;border:1px solid var(--line);border-radius:17px}.empty-mark{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:var(--green-soft);color:var(--green-dark);font-weight:700;margin:0 auto 18px}.empty-state p{color:var(--muted);max-width:520px;margin:0 auto 22px}
 
 /* Published learner experience */
-.learner-page{background:#f3f6f5}.learner-header{height:68px;background:#fff;border-bottom:4px solid var(--green);padding:0 max(24px,calc((100% - 1120px)/2));display:flex;align-items:center;justify-content:space-between;color:var(--navy)}.learner-header>div{display:flex;align-items:center;gap:22px}.learner-header img{height:44px;width:auto;display:block}.learner-header span{padding-left:22px;border-left:1px solid #d9d9cf;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.learner-page{background:#f3f6f5}.learner-header{height:88px;background:#fff;border-bottom:4px solid var(--green);padding:0 max(24px,calc((100% - 1120px)/2));display:flex;align-items:center;justify-content:space-between;color:var(--navy)}.learner-header>div{display:flex;align-items:center;gap:22px;height:100%}.learner-header img{height:100%;width:auto;display:block}.learner-header span{padding-left:22px;border-left:1px solid #d9d9cf;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
 .preview-banner{background:#fff1c9;color:#6b5312;padding:9px max(24px,calc((100% - 1120px)/2));display:flex;gap:12px;font-size:12px;border-bottom:1px solid #eadba9}.preview-banner span{opacity:.8}
 .learner-main{max-width:1120px;margin:0 auto;padding:30px 24px 80px}.learner-breadcrumb{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:24px}.learner-breadcrumb a{color:var(--green-dark);font-weight:700}
 .learner-course{margin-bottom:27px}.learner-course h1{color:var(--navy);max-width:850px}.learner-course>div{display:flex;gap:8px;flex-wrap:wrap}.learner-course>div span{background:#fff;border:1px solid var(--line);border-radius:99px;padding:7px 11px;font-size:11px;color:var(--muted)}
@@ -468,8 +468,8 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 
 @media(max-width:760px){
   .form-only .topbar{padding:0 16px}
-  .topbar-inner{min-height:60px}
-  .form-only .topbar img{height:36px}
+  .topbar-inner{min-height:72px}
+  .form-only .topbar img{height:64px}
   .form-only .topbar .meta>span{display:none}
   .form-only main{padding:20px 12px 56px}
   .progress-wrap{padding:18px 16px}
@@ -498,7 +498,7 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
   .template-card{grid-template-columns:42px 1fr}.template-card .template-actions{grid-column:1/3}
   .report-toolbar{align-items:stretch;flex-direction:column}.report-toolbar label{width:100%}.report-toolbar>div{display:grid;grid-template-columns:1fr 1fr}
   .report-filters{grid-template-columns:1fr 1fr;padding:14px}.provisional-note{align-items:flex-start;flex-direction:column}
-  .learner-header{height:60px;padding:0 14px}.learner-header img{height:36px;width:auto}.learner-header span{display:none}
+  .learner-header{height:72px;padding:0 14px}.learner-header img{height:100%;width:auto}.learner-header span{display:none}
   .learner-main{padding:22px 10px 60px}.learner-hero{padding:25px 20px}.learner-hero h1{font-size:27px}.learner-overview-grid{grid-template-columns:1fr}
   .evaluation-card{padding:20px 10px}.evaluation-heading{padding-left:8px;padding-right:8px}.form-navigation{align-items:stretch}.form-navigation .btn{flex:1}
   .distribution-list>div{grid-template-columns:1fr 70px}.distribution-list i{grid-column:1/3}.distribution-list em{grid-row:1;grid-column:2}
