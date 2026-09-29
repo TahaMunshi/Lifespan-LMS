@@ -110,14 +110,28 @@ export const store = {
     return { ...duplicate, displayName: `${course?.name || 'Activity'} — Copy` };
   },
 
-  duplicateEvaluationTemplate(templateId) {
+  createEvaluationTemplate(name = 'Activity Evaluation') {
+    const template = {
+      id: uid('eval'),
+      name,
+      version: 1,
+      status: 'draft',
+      dynamicSections: ['objectives', 'presenters', 'activity'],
+      sections: cloneStandardSections()
+    };
+    state.templates.evaluations.push(template);
+    persist();
+    return template;
+  },
+
+  duplicateEvaluationTemplate(templateId, name) {
     const source = state.templates.evaluations.find((item) => item.id === templateId);
     if (!source) return null;
     ensureEvaluationSections(source);
     const duplicate = {
       ...structuredClone(source),
       id: uid('eval'),
-      name: `${source.name} — Copy`,
+      name: name || `${source.name} — Copy`,
       version: 1,
       status: 'draft',
       duplicatedFrom: source.id
@@ -125,6 +139,90 @@ export const store = {
     state.templates.evaluations.push(duplicate);
     persist();
     return duplicate;
+  },
+
+  upsertActivityCatalog(input = {}) {
+    const name = String(input.name || '').trim() || 'Untitled activity';
+    const activityType = input.activityType || 'live';
+    const location = String(input.location || '').trim() || 'TBD';
+    const presenters = Array.isArray(input.presenters) ? input.presenters.filter(Boolean) : [];
+    const creditHours = Number(input.creditHours) || 6;
+    const startDate = input.startDate || '';
+    const endDate = input.endDate || '';
+    const typeLabel = activityType === 'home-study' ? 'Home Study' : activityType === 'hybrid' ? 'Hybrid' : 'Live';
+
+    let course = state.courses.find((item) => item.id === input.courseId);
+    if (!course) {
+      course = { id: uid('course'), name };
+      state.courses.push(course);
+    } else {
+      course.name = name;
+    }
+
+    let version = state.versions.find((item) => item.id === input.versionId);
+    if (!version) {
+      version = {
+        id: uid('version'),
+        courseId: course.id,
+        name: typeLabel,
+        activityType
+      };
+      state.versions.push(version);
+    } else {
+      version.courseId = course.id;
+      version.name = typeLabel;
+      version.activityType = activityType;
+    }
+
+    let cohort = state.cohorts.find((item) => item.id === input.cohortId);
+    if (!cohort) {
+      cohort = {
+        id: uid('cohort'),
+        versionId: version.id,
+        name: startDate ? new Date(`${startDate}T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Cohort',
+        location,
+        startDate,
+        endDate,
+        presenters: presenters.length ? presenters : ['Presenter']
+      };
+      state.cohorts.push(cohort);
+    } else {
+      cohort.versionId = version.id;
+      cohort.location = location;
+      cohort.startDate = startDate;
+      cohort.endDate = endDate;
+      cohort.presenters = presenters.length ? presenters : cohort.presenters;
+      if (startDate) {
+        cohort.name = new Date(`${startDate}T12:00:00`).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      }
+    }
+
+    let module = state.modules.find((item) => item.id === input.moduleId);
+    if (!module) {
+      module = {
+        id: uid('module'),
+        cohortId: cohort.id,
+        name: typeLabel,
+        creditHours,
+        startDate,
+        endDate
+      };
+      state.modules.push(module);
+    } else {
+      module.cohortId = cohort.id;
+      module.name = typeLabel;
+      module.creditHours = creditHours;
+      module.startDate = startDate;
+      module.endDate = endDate;
+    }
+
+    persist();
+    return {
+      courseId: course.id,
+      versionId: version.id,
+      cohortId: cohort.id,
+      moduleId: module.id
+    };
   },
 
   saveEvaluationTemplate(templateId, input) {

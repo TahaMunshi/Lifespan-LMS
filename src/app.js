@@ -59,14 +59,22 @@ function clearWizardDraft(id) {
   sessionStorage.removeItem(wizardDraftKey(id));
 }
 
-function wizardNextStep(currentStep, activityType) {
-  if (currentStep === 4 && !ACTIVITY_TYPES[activityType]?.requiresTest) return 6;
-  return Math.min(currentStep + 1, 6);
+function wizardNextStep(currentStep) {
+  return Math.min(Number(currentStep) + 1, 5);
 }
 
-function wizardPrevStep(currentStep, activityType) {
-  if (currentStep === 6 && !ACTIVITY_TYPES[activityType]?.requiresTest) return 4;
-  return Math.max(currentStep - 1, 1);
+function wizardPrevStep(currentStep) {
+  return Math.max(Number(currentStep) - 1, 1);
+}
+
+function wizardStepMeta(step) {
+  return [
+    ['Activity info', 'Name, type, dates, and location'],
+    ['Objectives', 'At least four learning goals'],
+    ['Presenters', 'Who teaches this activity'],
+    ['Evaluation & test', 'Questions learners will answer'],
+    ['Review & publish', 'Confirm and get the activity URL']
+  ][Math.max(0, Number(step) - 1)] || ['Activity', ''];
 }
 
 function activityPreset(data, activityType = 'live') {
@@ -84,12 +92,13 @@ function activityPreset(data, activityType = 'live') {
   const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
   const endDate = module?.endDate || '2027-12-31';
   return {
+    activityName: course?.name || '',
     courseId: course?.id || data.courses[0].id,
     versionId: version?.id || data.versions[0].id,
     cohortId: cohort?.id || data.cohorts[0].id,
     moduleId: module?.id || data.modules[0].id,
-    evaluationTemplateId: data.templates.evaluations[0].id,
-    testTemplateId: requiresTest ? (data.templates.tests[0]?.id || null) : null,
+    evaluationTemplateId: null,
+    testTemplateId: null,
     certificateTemplateId: ACTIVITY_TYPES[activityType]?.certificateTemplate || 'cert-live-v1',
     activityType,
     deadline: sample?.deadline || endDate,
@@ -99,13 +108,21 @@ function activityPreset(data, activityType = 'live') {
     endDate,
     presenters: (cohort?.presenters || []).join('\n'),
     cosponsor: 'Sensorimotor Psychotherapy Institute',
-    objectives
+    objectives,
+    ownedEval: false,
+    ownedTest: false,
+    requiresTest: Boolean(requiresTest)
   };
 }
 
 function parsePresenters(value) {
   const list = String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
   return list.length ? list : [''];
+}
+
+function parseObjectives(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean);
+  return String(value || '').split('\n').map((item) => item.trim()).filter(Boolean);
 }
 
 function presenterFieldsHtml(presentersText) {
@@ -115,6 +132,18 @@ function presenterFieldsHtml(presentersText) {
         <input type="text" class="presenter-input" value="${escapeHtml(name)}" required placeholder="Example: Pat Ogden, PhD">
       </label>
       ${list.length > 1 ? `<button type="button" class="btn ghost small presenter-remove" data-action="remove-presenter">Remove</button>` : ''}
+    </div>`).join('');
+}
+
+function objectiveFieldsHtml(objectives) {
+  const list = [...objectives];
+  while (list.length < 4) list.push('');
+  return list.map((text, index) => `
+    <div class="objective-row">
+      <label>Objective ${index + 1}
+        <textarea class="objective-input" rows="2" required placeholder="What will learners be able to do?">${escapeHtml(text)}</textarea>
+      </label>
+      ${list.length > 4 ? `<button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>` : ''}
     </div>`).join('');
 }
 
@@ -128,14 +157,198 @@ function syncPresentersField(form) {
     .join('\n');
 }
 
+function syncObjectivesField(form) {
+  if (!form) return;
+  const hidden = form.querySelector('input[name="objectives"]');
+  if (!hidden) return;
+  hidden.value = [...form.querySelectorAll('.objective-input')]
+    .map((input) => input.value.trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
+function collectWizardFormDraft(form) {
+  const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
+  const draft = loadWizardDraft(draftKey);
+  syncPresentersField(form);
+  syncObjectivesField(form);
+  const formData = new FormData(form);
+  for (const [key, value] of formData.entries()) {
+    if (key.startsWith('q_') || key.includes('.')) continue;
+    draft[key] = value;
+  }
+  draft.presenters = formData.get('presenters') || draft.presenters || '';
+  draft.objectives = formData.get('objectives') || draft.objectives || '';
+  draft.activityName = formData.get('activityName') || draft.activityName || '';
+  return { draftKey, draft };
+}
+
+function ensureWizardTemplates(draft, data) {
+  const activityType = draft.activityType || 'live';
+  const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
+  const activityName = String(draft.activityName || '').trim() || 'New activity';
+  const sharedEvalIds = new Set(['eval-standard-v1']);
+  const sharedTestIds = new Set(['test-standard-v1']);
+
+  if (!draft.evaluationTemplateId || !byId(data.templates.evaluations, draft.evaluationTemplateId)) {
+    const created = store.createEvaluationTemplate(`Evaluation — ${activityName}`);
+    draft.evaluationTemplateId = created.id;
+    draft.ownedEval = true;
+  } else if (!draft.ownedEval && sharedEvalIds.has(draft.evaluationTemplateId)) {
+    const duplicated = store.duplicateEvaluationTemplate(draft.evaluationTemplateId, `Evaluation — ${activityName}`);
+    if (duplicated) {
+      draft.evaluationTemplateId = duplicated.id;
+      draft.ownedEval = true;
+    }
+  } else if (draft.ownedEval) {
+    store.saveEvaluationTemplate(draft.evaluationTemplateId, { name: `Evaluation — ${activityName}` });
+  }
+
+  if (requiresTest) {
+    if (!draft.testTemplateId || !byId(data.templates.tests, draft.testTemplateId)) {
+      const sourceId = data.templates.tests.find((item) => item.id === 'test-standard-v1')?.id
+        || data.templates.tests[0]?.id;
+      const created = sourceId
+        ? store.duplicateTestTemplate(sourceId)
+        : store.createTestTemplate(`Knowledge check — ${activityName}`);
+      if (created) {
+        store.saveTestTemplate(created.id, { name: `Knowledge check — ${activityName}` });
+        draft.testTemplateId = created.id;
+        draft.ownedTest = true;
+      }
+    } else if (!draft.ownedTest && sharedTestIds.has(draft.testTemplateId)) {
+      const duplicated = store.duplicateTestTemplate(draft.testTemplateId);
+      if (duplicated) {
+        store.saveTestTemplate(duplicated.id, { name: `Knowledge check — ${activityName}` });
+        draft.testTemplateId = duplicated.id;
+        draft.ownedTest = true;
+      }
+    } else if (draft.ownedTest) {
+      store.saveTestTemplate(draft.testTemplateId, { name: `Knowledge check — ${activityName}` });
+    }
+  } else {
+    draft.testTemplateId = '';
+  }
+
+  draft.certificateTemplateId = ACTIVITY_TYPES[activityType]?.certificateTemplate || draft.certificateTemplateId;
+  return draft;
+}
+
+function collectEvalSectionsFromForm(form) {
+  const sections = {};
+  ['learning', 'presenter', 'environment', 'administration', 'written'].forEach((key) => {
+    const rows = [...form.querySelectorAll(`.eval-question-list[data-section="${key}"] .eval-question-row`)];
+    if (!rows.length) return;
+    sections[key] = rows.map((row, index) => {
+      const textarea = row.querySelector('textarea');
+      const existingId = row.dataset.qid || `${key}-${index + 1}`;
+      return {
+        id: existingId,
+        text: textarea?.value?.trim() || `Question ${index + 1}`
+      };
+    }).filter((item) => item.text);
+  });
+  return Object.keys(sections).length ? sections : null;
+}
+
+function persistWizardStepAssets(form, draft) {
+  const sections = collectEvalSectionsFromForm(form);
+  if (sections && draft.evaluationTemplateId) {
+    store.saveEvaluationTemplate(draft.evaluationTemplateId, {
+      name: `Evaluation — ${String(draft.activityName || 'Activity').trim() || 'Activity'}`,
+      sections
+    });
+  }
+  if (ACTIVITY_TYPES[draft.activityType]?.requiresTest && draft.testTemplateId && form.querySelector('.test-question-editor')) {
+    const payload = collectTestTemplateForm(form);
+    store.saveTestTemplate(draft.testTemplateId, {
+      ...payload,
+      name: `Knowledge check — ${String(draft.activityName || 'Activity').trim() || 'Activity'}`
+    });
+  }
+}
+
 function applyActivityTypePreset(draft, data, activityType) {
   const preset = activityPreset(data, activityType);
-  return {
+  const next = {
     ...draft,
-    ...preset,
     activityType,
-    objectives: Array.isArray(preset.objectives) ? preset.objectives.join('\n') : preset.objectives
+    certificateTemplateId: preset.certificateTemplateId,
+    requiresTest: preset.requiresTest
   };
+  if (!draft.activityName) next.activityName = preset.activityName;
+  if (!draft.location) next.location = preset.location;
+  if (!draft.creditHours) next.creditHours = preset.creditHours;
+  if (!draft.startDate) next.startDate = preset.startDate;
+  if (!draft.endDate) next.endDate = preset.endDate;
+  if (!draft.deadline) next.deadline = preset.deadline;
+  if (!draft.presenters) next.presenters = preset.presenters;
+  if (!draft.objectives || !parseObjectives(draft.objectives).length) {
+    next.objectives = Array.isArray(preset.objectives) ? preset.objectives.join('\n') : preset.objectives;
+  }
+  if (!draft.courseId) {
+    next.courseId = preset.courseId;
+    next.versionId = preset.versionId;
+    next.cohortId = preset.cohortId;
+    next.moduleId = preset.moduleId;
+  }
+  return ensureWizardTemplates(next, data);
+}
+
+function evalQuestionsHtml(sections) {
+  const sectionOrder = [
+    ['learning', 'Standard learning questions'],
+    ['presenter', 'Standard presenter questions (auto-applied to each presenter)'],
+    ['environment', 'Standard environment questions'],
+    ['administration', 'Standard administration questions'],
+    ['written', 'Written feedback']
+  ];
+  return sectionOrder.map(([key, label]) => {
+    const questions = sections[key] || [];
+    return `
+      <section class="editor-card flat-section wizard-eval-section" data-section="${key}">
+        <div class="section-heading tight"><h3>${escapeHtml(label)}</h3>
+          <button type="button" class="btn secondary small" data-action="add-eval-question" data-section="${key}">+ Add question</button>
+        </div>
+        <div class="eval-question-list" data-section="${key}">
+          ${questions.map((question, index) => `
+            <div class="eval-question-row" data-qid="${escapeHtml(question.id)}">
+              <label>Question ${index + 1}
+                <textarea name="${key}.${question.id}" rows="2" required>${escapeHtml(question.text)}</textarea>
+              </label>
+              <button type="button" class="btn ghost small" data-action="remove-eval-question">Remove</button>
+            </div>`).join('') || '<p class="muted">No questions yet. Add one.</p>'}
+        </div>
+      </section>`;
+  }).join('');
+}
+
+function testQuestionsHtml(template, objectiveCount = 4) {
+  const questions = template?.questions || [];
+  const blocks = questions.map((question, index) => `
+    <article class="editor-card test-question-editor" data-question-index="${index}">
+      <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
+      <label>Question text<textarea name="q_${index}_text" rows="2" required>${escapeHtml(question.text)}</textarea></label>
+      <div class="form-grid two">
+        ${(question.options || ['', '', '', '']).concat(['', '', '', '']).slice(0, 4).map((option, optionIndex) => `
+          <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${optionIndex < 2 ? 'required' : ''}></label>`).join('')}
+      </div>
+      <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
+        <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
+      <label>Linked objective number (0 = first)<input type="number" min="0" max="${Math.max(0, objectiveCount - 1)}" step="1" name="q_${index}_objective" value="${Number(question.objectiveIndex) || 0}"></label>
+    </article>`).join('');
+  return `
+    <div class="wizard-test-block">
+      <div class="section-heading tight"><h3>Knowledge check</h3></div>
+      <p class="muted">Home Study and Hybrid need at least 12 scored questions, with 3–4 linked to each objective. Pass score defaults to 80% with 3 attempts.</p>
+      <div class="form-grid two">
+        <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template?.passPercent || 80}" required></label>
+        <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template?.maxAttempts || 3}" required></label>
+      </div>
+      <input type="hidden" name="name" value="${escapeHtml(template?.name || 'Knowledge check')}">
+      <div id="test-question-list">${blocks}</div>
+      <button type="button" class="btn secondary" data-action="add-test-question">+ Add question</button>
+    </div>`;
 }
 
 function testAnswers(pubId, preview) {
@@ -281,8 +494,8 @@ function adminDashboard() {
   }).join('');
   const content = `
     <section class="guide-actions">
-      ${routeLink('admin/activity/new/edit/1', '<span class="guide-icon">+</span><strong>Create activity</strong><small>One page. Fill in, save, publish.</small>', 'guide-card')}
-      ${routeLink('admin/templates', '<span class="guide-icon">T</span><strong>Edit forms &amp; tests</strong><small>Pencil icons edit names and questions.</small>', 'guide-card')}
+      ${routeLink('admin/activity/new/edit/1', '<span class="guide-icon">+</span><strong>Create activity</strong><small>Five steps. Publish and copy the learner URL.</small>', 'guide-card')}
+      ${routeLink('admin/templates', '<span class="guide-icon">T</span><strong>Forms library</strong><small>Optional. Most edits happen inside Create activity.</small>', 'guide-card')}
       ${routeLink('learn', '<span class="guide-icon">L</span><strong>Learner portal</strong><small>See what learners see after you publish.</small>', 'guide-card')}
     </section>
     <section class="metric-grid secondary">${stats.map(([label, value, note]) => `<article class="metric"><span>${escapeHtml(label)}</span><strong>${value}</strong><small>${escapeHtml(note)}</small></article>`).join('')}</section>
@@ -336,6 +549,7 @@ function adminActivityEditor(id, stepParam) {
   const data = state();
   const draftKey = id === 'new' ? 'new' : id;
   const existing = id && id !== 'new' ? data.publications.find((item) => item.id === id) : null;
+  const existingContext = existing ? activityContext(data, existing) : null;
   let draft = loadWizardDraft(draftKey);
   if (!existing && !Object.keys(draft).length) {
     draft = applyActivityTypePreset({}, data, 'live');
@@ -347,6 +561,7 @@ function adminActivityEditor(id, stepParam) {
     id: existing.id,
     slug: existing.slug,
     status: existing.status,
+    activityName: existingContext?.course?.name || '',
     courseId: existing.courseId,
     versionId: existing.versionId,
     cohortId: existing.cohortId,
@@ -357,12 +572,14 @@ function adminActivityEditor(id, stepParam) {
     activityType: existing.activityType,
     deadline: existing.deadline,
     objectives: existing.objectives,
-    location: existing.location,
-    creditHours: existing.creditHours,
-    startDate: existing.startDate,
-    endDate: existing.endDate,
-    presenters: (existing.presenters || []).join('\n'),
-    cosponsor: existing.cosponsor || 'Sensorimotor Psychotherapy Institute'
+    location: existing.location || existingContext?.cohort?.location || '',
+    creditHours: existing.creditHours ?? existingContext?.module?.creditHours ?? 6,
+    startDate: existing.startDate || existingContext?.module?.startDate || '',
+    endDate: existing.endDate || existingContext?.module?.endDate || '',
+    presenters: (existing.presenters || existingContext?.cohort?.presenters || []).join('\n'),
+    cosponsor: existing.cosponsor || 'Sensorimotor Psychotherapy Institute',
+    ownedEval: false,
+    ownedTest: false
   } : {
     id: '',
     slug: '',
@@ -370,34 +587,34 @@ function adminActivityEditor(id, stepParam) {
     ...preset,
     presenters: preset.presenters
   };
-  const merged = { ...defaults, ...draft };
-  if (typeof merged.objectives === 'string') {
-    merged.objectives = merged.objectives.split('\n').map((item) => item.trim()).filter(Boolean);
-  }
-  if (!Array.isArray(merged.objectives) || merged.objectives.filter(Boolean).length < 4) {
-    merged.objectives = preset.objectives;
-  }
+  let merged = { ...defaults, ...draft };
+  if (!merged.activityName) merged.activityName = defaults.activityName || preset.activityName;
+  merged = ensureWizardTemplates(merged, data);
+  saveWizardDraft(draftKey, {
+    ...merged,
+    objectives: Array.isArray(merged.objectives) ? merged.objectives.join('\n') : merged.objectives
+  });
+
+  const objectivesList = parseObjectives(merged.objectives);
+  while (objectivesList.length < 4) objectivesList.push(preset.objectives[objectivesList.length] || `Learning goal ${objectivesList.length + 1}`);
   const publication = {
     ...defaults,
     ...merged,
-    objectives: Array.isArray(merged.objectives) ? merged.objectives.filter(Boolean) : preset.objectives
+    objectives: objectivesList.filter(Boolean)
   };
-  if (ACTIVITY_TYPES[publication.activityType]?.requiresTest && !publication.testTemplateId) {
-    publication.testTemplateId = data.templates.tests[0]?.id || null;
-  }
-  const resolved = activityContext(data, publication);
   const requiresTest = ACTIVITY_TYPES[publication.activityType]?.requiresTest;
+  const step = Math.min(5, Math.max(1, Number(stepParam) || 1));
   const savedFlag = existing && sessionStorage.getItem(`activity-saved-${existing.id}`);
   if (savedFlag) {
     sessionStorage.removeItem(`activity-saved-${existing.id}`);
     const publicUrl = `${location.origin}${location.pathname}#/learn/${existing.slug}`;
     const content = `
-      ${nextStepBanner(existing.status === 'published' ? 'This activity is live for learners. Open the Learner portal to confirm it appears.' : 'Publish this activity so learners can see it.', existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish now</button>` : routeLink('learn', 'Open Learner portal', 'btn primary'))}
+      ${nextStepBanner(existing.status === 'published' ? 'Copy this URL onto the WordPress button for this workshop.' : 'Publish this activity so learners can open the link.', existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish now</button>` : routeLink('learn', 'Open Learner portal', 'btn primary'))}
       <section class="wizard-page celebrate">
         <div class="celebrate-link">
-          <h2>Activity saved</h2>
-          <p>Everything below is ready. Learners only see this after you publish.</p>
-          <div class="published-link large"><span>${escapeHtml(publicUrl)}</span><button class="btn primary" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link</button></div>
+          <h2>${existing.status === 'published' ? 'Activity ready' : 'Activity saved'}</h2>
+          <p>Use this unique URL on the public website.</p>
+          <label class="published-link large"><span>Activity URL</span><strong>${escapeHtml(publicUrl)}</strong><button class="btn primary" data-action="copy-link" data-value="${escapeHtml(publicUrl)}">Copy link</button></label>
           <div class="celebrate-actions">
             ${routeLink(`preview/${existing.id}`, 'Preview', 'btn secondary')}
             ${existing.status !== 'published' ? `<button class="btn primary" data-action="toggle-publish" data-id="${existing.id}">Publish</button>` : ''}
@@ -405,26 +622,44 @@ function adminActivityEditor(id, stepParam) {
           </div>
         </div>
       </section>`;
-    return adminShell('Activity saved', 'Saved. Publish when you want learners to see it.', content, 'activities');
+    return adminShell('Activity URL', 'Share this link from the WordPress site.', content, 'activities');
   }
 
-  const objectivesText = (publication.objectives || preset.objectives).join('\n');
-  const presentersText = draft.presenters
-    || defaults.presenters
-    || (resolved?.cohort?.presenters || []).join('\n');
-  const locationValue = draft.location ?? defaults.location ?? resolved?.cohort?.location ?? '';
-  const creditHoursValue = draft.creditHours ?? defaults.creditHours ?? resolved?.module?.creditHours ?? '';
-  const startDateValue = draft.startDate ?? defaults.startDate ?? resolved?.module?.startDate ?? '';
-  const endDateValue = draft.endDate ?? defaults.endDate ?? resolved?.module?.endDate ?? '';
-  const certTemplate = ACTIVITY_TYPES[publication.activityType]?.certificateTemplate || publication.certificateTemplateId;
-  const cosponsorValue = draft.cosponsor ?? defaults.cosponsor ?? preset.cosponsor ?? 'Sensorimotor Psychotherapy Institute';
-  const testId = publication.testTemplateId || data.templates.tests[0]?.id;
+  const presentersText = draft.presenters || defaults.presenters || '';
+  const locationValue = draft.location ?? defaults.location ?? '';
+  const creditHoursValue = draft.creditHours ?? defaults.creditHours ?? 6;
+  const startDateValue = draft.startDate ?? defaults.startDate ?? '';
+  const endDateValue = draft.endDate ?? defaults.endDate ?? '';
+  const cosponsorValue = draft.cosponsor ?? defaults.cosponsor ?? 'Sensorimotor Psychotherapy Institute';
+  const activityName = publication.activityName || '';
+  const evalTemplate = byId(data.templates.evaluations, publication.evaluationTemplateId);
+  const testTemplate = byId(data.templates.tests, publication.testTemplateId);
+  const sections = templateQuestionBank(evalTemplate);
+  const presenterCount = parsePresenters(presentersText).filter(Boolean).length || 1;
+  const [stepTitle, stepHint] = wizardStepMeta(step);
 
-  const content = `
-    ${nextStepBanner('Fill in every section on this page, then press Save at the bottom. Nothing is hidden in another step.')}
-    <form id="activity-form" class="flat-editor" data-id="${escapeHtml(publication.id)}" data-step="6" data-draft-key="${escapeHtml(draftKey)}">
-      <section class="editor-card flat-section" id="section-type">
-        <div class="section-heading tight"><h2>1. Activity type</h2>${statusBadge(publication.status || 'draft')}</div>
+  const stepButtons = [1, 2, 3, 4, 5].map((item) => {
+    const [label] = wizardStepMeta(item);
+    const className = item === step ? 'active' : item < step ? 'done' : '';
+    return `<button type="button" class="${className}" data-action="wizard-goto" data-step="${item}"><i>${item}</i>${escapeHtml(label)}</button>`;
+  }).join('');
+
+  let body = '';
+  if (step === 1) {
+    body = `
+      <section class="wizard-page">
+        <h2>Activity information</h2>
+        <p>Enter the basics for this workshop, cohort, or module.</p>
+        <div class="form-grid two">
+          <label class="span-two">Activity / course name<input name="activityName" value="${escapeHtml(activityName)}" required placeholder="Example: Sensorimotor Module 1"></label>
+          <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
+          <label>Location<input name="location" value="${escapeHtml(locationValue)}" required placeholder="Los Angeles, CA or Online"></label>
+          <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
+          <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
+          <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline || '')}" required></label>
+          <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
+        </div>
+        <div class="section-heading tight" style="margin-top:24px"><h3>Activity type</h3></div>
         <div class="type-choice-grid">
           ${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `
             <label class="type-choice">
@@ -432,56 +667,127 @@ function adminActivityEditor(id, stepParam) {
               <span><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(ACTIVITY_TYPE_HELP[value])}</span></span>
             </label>`).join('')}
         </div>
-      </section>
-      <section class="editor-card flat-section" id="section-course">
-        <div class="section-heading tight"><h2>2. Course and class</h2></div>
-        <div class="form-grid two">
-          <label>Course<select name="courseId">${selectOptions(data.courses, publication.courseId, (item) => item.name)}</select></label>
-          <label>Version<select name="versionId">${selectOptions(data.versions, publication.versionId, (item) => `${byId(data.courses, item.courseId)?.name} - ${item.name}`)}</select></label>
-          <label>Class group<select name="cohortId">${selectOptions(data.cohorts, publication.cohortId, (item) => `${item.name} - ${item.location}`)}</select></label>
-          <label>Module<select name="moduleId">${selectOptions(data.modules, publication.moduleId, (item) => `${item.name} - ${item.creditHours} credit hours`)}</select></label>
-        </div>
-      </section>
-      <section class="editor-card flat-section" id="section-schedule">
-        <div class="section-heading tight"><h2>3. Dates, place, and presenters</h2></div>
-        <div class="form-grid two">
-          <label>Activity location<input name="location" value="${escapeHtml(locationValue)}" required></label>
-          <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
-          <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
-          <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
-          <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline)}" required></label>
-          <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
-        </div>
+      </section>`;
+  } else if (step === 2) {
+    body = `
+      <section class="wizard-page">
+        <h2>Learning objectives</h2>
+        <p>Add at least four objectives. They appear on the evaluation automatically${requiresTest ? ' and drive knowledge-check coverage' : ''}.</p>
+        <div class="objective-field-list">${objectiveFieldsHtml(objectivesList)}</div>
+        <button type="button" class="btn secondary" data-action="add-objective">+ Add objective</button>
+        <input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">
+      </section>`;
+  } else if (step === 3) {
+    body = `
+      <section class="wizard-page">
+        <h2>Presenters</h2>
+        <p>Add every presenter for this activity. Standard presenter evaluation questions are included automatically for each name.</p>
         <div class="presenter-field-list">${presenterFieldsHtml(presentersText)}</div>
         <button type="button" class="btn secondary" data-action="add-presenter">+ Add another presenter</button>
         <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
-      </section>
-      <section class="editor-card flat-section" id="section-objectives">
-        <div class="section-heading tight"><h2>4. Objectives and evaluation form</h2>
-          ${publication.evaluationTemplateId ? pencilBtn('goto-eval-template', publication.evaluationTemplateId, 'Edit form questions') : ''}
+        <p class="muted" style="margin-top:18px">${presenterCount} presenter${presenterCount === 1 ? '' : 's'} × ${(sections.presenter || []).length} standard questions will appear on the learner evaluation.</p>
+      </section>`;
+  } else if (step === 4) {
+    body = `
+      <section class="wizard-page">
+        <h2>Evaluation &amp; test</h2>
+        <p>Standard questions are ready. Edit them here, or add activity-specific questions. Objectives and presenters are already connected.</p>
+        <div class="wizard-auto-note">
+          <strong>Already included automatically</strong>
+          <ul>
+            <li>${objectivesList.filter(Boolean).length} learning objectives become rating items</li>
+            <li>${presenterCount} presenter${presenterCount === 1 ? '' : 's'} get the standard presenter questions</li>
+            <li>${requiresTest ? 'A scored knowledge check is required for this activity type' : 'Live activities do not need a scored knowledge check'}</li>
+          </ul>
         </div>
-        <p class="muted">Enter at least four objectives (one per line). Learners rate each on a 1-5 scale.</p>
-        <label>Learning objectives<textarea name="objectives" rows="8" required>${escapeHtml(objectivesText)}</textarea></label>
-        <label>Evaluation form<select name="evaluationTemplateId">${selectOptions(data.templates.evaluations, publication.evaluationTemplateId, (item) => `${item.name} | v${item.version}`)}</select></label>
-        <input type="hidden" name="certificateTemplateId" value="${escapeHtml(certTemplate)}">
-      </section>
-      ${requiresTest ? `
-      <section class="editor-card flat-section" id="section-test">
-        <div class="section-heading tight"><h2>5. Knowledge check</h2>
-          ${testId ? pencilBtn('goto-test-template', testId, 'Edit knowledge check') : ''}
-        </div>
-        <label>Knowledge check<select name="testTemplateId" required>${selectOptions(data.templates.tests, testId, (item) => `${item.name} | ${item.passPercent}% | ${item.questions.length} questions`)}</select></label>
-        <p class="muted">Use the pencil to rename or edit questions. Duplicated checks keep their own editable name.</p>
-      </section>` : '<input type="hidden" name="testTemplateId" value="">'}
-      <div class="sticky-actions flat-save">
-        ${routeLink('admin/activities', 'Cancel', 'btn ghost')}
-        <button class="btn primary" type="submit">Save activity</button>
+        ${evalQuestionsHtml(sections)}
+        ${requiresTest ? testQuestionsHtml(testTemplate, objectivesList.filter(Boolean).length || 4) : '<input type="hidden" name="testTemplateId" value=""><p class="muted">No knowledge check for Live activities.</p>'}
+        <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
+        <input type="hidden" name="testTemplateId" value="${escapeHtml(requiresTest ? (publication.testTemplateId || '') : '')}">
+      </section>`;
+  } else {
+    const publicUrlPreview = existing?.slug
+      ? `${location.origin}${location.pathname}#/learn/${existing.slug}`
+      : `${location.origin}${location.pathname}#/learn/${safeSlug(activityName || 'activity')}`;
+    body = `
+      <section class="wizard-page">
+        <h2>Review &amp; publish</h2>
+        <p>Confirm everything looks right. Publishing creates the activity, connects evaluation${requiresTest ? ' and test' : ''}, and gives you the learner URL.</p>
+        <dl class="review-list">
+          <div><dt>Activity</dt><dd>${escapeHtml(activityName || 'Untitled')}</dd></div>
+          <div><dt>Type</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label || '')}</dd></div>
+          <div><dt>Credit hours</dt><dd>${escapeHtml(creditHoursValue)}</dd></div>
+          <div><dt>Dates</dt><dd>${escapeHtml(formatDate(startDateValue))} – ${escapeHtml(formatDate(endDateValue))}</dd></div>
+          <div><dt>Location</dt><dd>${escapeHtml(locationValue || '—')}</dd></div>
+          <div><dt>Deadline</dt><dd>${escapeHtml(formatDate(publication.deadline))}</dd></div>
+          <div><dt>Objectives</dt><dd>${objectivesList.filter(Boolean).length}</dd></div>
+          <div><dt>Presenters</dt><dd>${escapeHtml(parsePresenters(presentersText).filter(Boolean).join(', ') || '—')}</dd></div>
+          <div><dt>Evaluation</dt><dd>${escapeHtml(evalTemplate?.name || 'Standard evaluation')} · ${(sections.learning || []).length + (sections.presenter || []).length + (sections.environment || []).length + (sections.administration || []).length + (sections.written || []).length} questions</dd></div>
+          <div><dt>Knowledge check</dt><dd>${requiresTest ? `${testTemplate?.questions?.length || 0} questions · ${testTemplate?.passPercent || 80}% · ${testTemplate?.maxAttempts || 3} attempts` : 'Not required (Live)'}</dd></div>
+          <div><dt>Certificate</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.certificateTemplate === 'cert-study-v1' ? 'Home Study / Hybrid certificate' : 'Live certificate')}</dd></div>
+          <div><dt>URL preview</dt><dd>${escapeHtml(publicUrlPreview)}</dd></div>
+        </dl>
+        <input type="hidden" name="activityName" value="${escapeHtml(activityName)}">
+        <input type="hidden" name="activityType" value="${escapeHtml(publication.activityType)}">
+        <input type="hidden" name="creditHours" value="${escapeHtml(creditHoursValue)}">
+        <input type="hidden" name="location" value="${escapeHtml(locationValue)}">
+        <input type="hidden" name="startDate" value="${escapeHtml(startDateValue)}">
+        <input type="hidden" name="endDate" value="${escapeHtml(endDateValue)}">
+        <input type="hidden" name="deadline" value="${escapeHtml(publication.deadline || '')}">
+        <input type="hidden" name="cosponsor" value="${escapeHtml(cosponsorValue)}">
+        <input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">
+        <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
+        <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
+        <input type="hidden" name="testTemplateId" value="${escapeHtml(publication.testTemplateId || '')}">
+        <input type="hidden" name="certificateTemplateId" value="${escapeHtml(publication.certificateTemplateId || '')}">
+        <input type="hidden" name="courseId" value="${escapeHtml(publication.courseId || '')}">
+        <input type="hidden" name="versionId" value="${escapeHtml(publication.versionId || '')}">
+        <input type="hidden" name="cohortId" value="${escapeHtml(publication.cohortId || '')}">
+        <input type="hidden" name="moduleId" value="${escapeHtml(publication.moduleId || '')}">
+      </section>`;
+  }
+
+  const nav = `
+    <div class="wizard-nav">
+      <div>${step > 1 ? `<button type="button" class="btn ghost" data-action="wizard-prev">Back</button>` : routeLink('admin/activities', 'Cancel', 'btn ghost')}</div>
+      <div class="wizard-nav-right">
+        ${step < 5 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : `
+          <button type="submit" class="btn secondary" name="intent" value="draft">Save draft</button>
+          <button type="submit" class="btn primary" name="intent" value="publish">Publish activity</button>`}
       </div>
+    </div>`;
+
+  const content = `
+    ${nextStepBanner(`Step ${step} of 5 — ${stepHint}`)}
+    <nav class="named-steps wizard-steps" aria-label="Activity creation steps">${stepButtons}</nav>
+    <form id="activity-form" class="wizard-layout" data-id="${escapeHtml(publication.id || '')}" data-step="${step}" data-draft-key="${escapeHtml(draftKey)}" data-question-count="${testTemplate?.questions?.length || 0}">
+      <div class="wizard-panel">
+        ${body}
+        ${nav}
+      </div>
+      <input type="hidden" name="courseId" value="${escapeHtml(publication.courseId || '')}">
+      <input type="hidden" name="versionId" value="${escapeHtml(publication.versionId || '')}">
+      <input type="hidden" name="cohortId" value="${escapeHtml(publication.cohortId || '')}">
+      <input type="hidden" name="moduleId" value="${escapeHtml(publication.moduleId || '')}">
+      <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
+      <input type="hidden" name="testTemplateId" value="${escapeHtml(requiresTest ? (publication.testTemplateId || '') : '')}">
+      <input type="hidden" name="certificateTemplateId" value="${escapeHtml(publication.certificateTemplateId || '')}">
+      ${step !== 1 ? `<input type="hidden" name="activityType" value="${escapeHtml(publication.activityType)}">` : ''}
+      ${step !== 1 ? `<input type="hidden" name="activityName" value="${escapeHtml(activityName)}">` : ''}
+      ${![1, 5].includes(step) ? `
+        <input type="hidden" name="creditHours" value="${escapeHtml(creditHoursValue)}">
+        <input type="hidden" name="location" value="${escapeHtml(locationValue)}">
+        <input type="hidden" name="startDate" value="${escapeHtml(startDateValue)}">
+        <input type="hidden" name="endDate" value="${escapeHtml(endDateValue)}">
+        <input type="hidden" name="deadline" value="${escapeHtml(publication.deadline || '')}">
+        <input type="hidden" name="cosponsor" value="${escapeHtml(cosponsorValue)}">` : ''}
+      ${![2, 5].includes(step) ? `<input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">` : ''}
+      ${![3, 5].includes(step) ? `<input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">` : ''}
     </form>`;
 
   return adminShell(
     existing ? 'Edit activity' : 'Create activity',
-    'All fields are on this one page. Scroll, edit, then Save.',
+    `${stepTitle} · Step ${step} of 5`,
     content,
     'activities'
   );
@@ -1161,49 +1467,92 @@ function collectEvaluation(form) {
   return next;
 }
 
-function submitActivityForm(form) {
-  const data = new FormData(form);
-  const activityType = data.get('activityType') || 'live';
-  const course = byId(state().courses, data.get('courseId'));
-  const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
-  const draft = loadWizardDraft(draftKey);
-  const mergedData = { ...draft, ...Object.fromEntries(data) };
+function submitActivityForm(form, intent = 'draft') {
+  const { draftKey, draft } = collectWizardFormDraft(form);
+  persistWizardStepAssets(form, draft);
+  const activityType = draft.activityType || 'live';
   const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
-  let objectives = String(mergedData.objectives || '').split('\n').map((item) => item.trim()).filter(Boolean);
-  if (objectives.length < 4) {
-    objectives = activityPreset(state(), activityType).objectives;
+  const activityName = String(draft.activityName || '').trim();
+  if (!activityName) {
+    toast('Enter an activity name.', 'error');
+    return;
   }
+  let objectives = parseObjectives(draft.objectives);
+  if (objectives.length < 4) {
+    toast('Add at least four learning objectives.', 'error');
+    return;
+  }
+  const presenters = parsePresenters(draft.presenters).filter(Boolean);
+  if (!presenters.length) {
+    toast('Add at least one presenter.', 'error');
+    return;
+  }
+
+  const ensured = ensureWizardTemplates({ ...draft, activityName, activityType }, state());
+  if (requiresTest) {
+    const test = byId(state().templates.tests, ensured.testTemplateId);
+    if (!test || test.questions.length < 12) {
+      toast('Home Study and Hybrid need a knowledge check with at least 12 questions (step 4).', 'error');
+      return;
+    }
+  }
+
+  const catalog = store.upsertActivityCatalog({
+    name: activityName,
+    activityType,
+    location: String(draft.location || '').trim(),
+    presenters,
+    creditHours: Number(draft.creditHours),
+    startDate: draft.startDate,
+    endDate: draft.endDate,
+    courseId: form.dataset.id ? draft.courseId : undefined,
+    versionId: form.dataset.id ? draft.versionId : undefined,
+    cohortId: form.dataset.id ? draft.cohortId : undefined,
+    moduleId: form.dataset.id ? draft.moduleId : undefined
+  });
+
+  const existingPub = form.dataset.id ? byId(state().publications, form.dataset.id) : null;
   const result = store.savePublication({
     id: form.dataset.id || undefined,
-    courseId: mergedData.courseId,
-    versionId: mergedData.versionId,
-    cohortId: mergedData.cohortId,
-    moduleId: mergedData.moduleId,
+    courseId: catalog.courseId,
+    versionId: catalog.versionId,
+    cohortId: catalog.cohortId,
+    moduleId: catalog.moduleId,
     activityType,
-    deadline: mergedData.deadline,
-    location: String(mergedData.location || '').trim(),
-    creditHours: Number(mergedData.creditHours),
-    startDate: mergedData.startDate,
-    endDate: mergedData.endDate,
-    presenters: String(mergedData.presenters || '').split('\n').map((item) => item.trim()).filter(Boolean),
-    cosponsor: String(mergedData.cosponsor || '').trim() || 'Sensorimotor Psychotherapy Institute',
-    evaluationTemplateId: mergedData.evaluationTemplateId || state().templates.evaluations[0].id,
-    testTemplateId: requiresTest ? (mergedData.testTemplateId || state().templates.tests[0].id) : null,
+    deadline: draft.deadline,
+    location: String(draft.location || '').trim(),
+    creditHours: Number(draft.creditHours),
+    startDate: draft.startDate,
+    endDate: draft.endDate,
+    presenters,
+    cosponsor: String(draft.cosponsor || '').trim() || 'Sensorimotor Psychotherapy Institute',
+    evaluationTemplateId: ensured.evaluationTemplateId,
+    testTemplateId: requiresTest ? ensured.testTemplateId : null,
     certificateTemplateId: ACTIVITY_TYPES[activityType].certificateTemplate,
-    slug: form.dataset.id
-      ? (byId(state().publications, form.dataset.id)?.slug || safeSlug(course?.name || 'activity'))
-      : safeSlug(course?.name || 'activity'),
+    slug: existingPub?.slug || safeSlug(activityName),
     objectives,
-    status: form.dataset.id ? byId(state().publications, form.dataset.id)?.status : 'draft'
+    status: existingPub?.status || 'draft'
   });
   if (!result.ok) {
     toast(result.errors.join(' '), 'error');
     return;
   }
+
+  if (intent === 'publish' && result.publication.status !== 'published') {
+    const published = store.togglePublication(result.publication.id);
+    if (!published.ok) {
+      toast(published.errors.join(' '), 'error');
+      sessionStorage.setItem(`activity-saved-${result.publication.id}`, '1');
+      clearWizardDraft(draftKey);
+      location.hash = `#/admin/activity/${result.publication.id}/edit/5`;
+      return;
+    }
+  }
+
   clearWizardDraft(draftKey);
   sessionStorage.setItem(`activity-saved-${result.publication.id}`, '1');
-  toast('Activity saved.');
-  location.hash = `#/admin/activity/${result.publication.id}/edit/6`;
+  toast(intent === 'publish' ? 'Activity published.' : 'Draft saved.');
+  location.hash = `#/admin/activity/${result.publication.id}/edit/5`;
 }
 
 function exportReport(publicationId) {
@@ -1246,9 +1595,12 @@ document.addEventListener('submit', (event) => {
   if (!form.reportValidity()) return;
 
   if (form.id === 'activity-form') {
-    if (Number(form.dataset.step) !== 6) return;
+    if (Number(form.dataset.step) !== 5) return;
     syncPresentersField(form);
-    submitActivityForm(form);
+    syncObjectivesField(form);
+    const submitter = event.submitter;
+    const intent = submitter?.value || 'draft';
+    submitActivityForm(form, intent);
     return;
   }
   if (form.id === 'template-form') {
@@ -1352,10 +1704,7 @@ document.addEventListener('submit', (event) => {
 document.addEventListener('change', (event) => {
   if (event.target.name === 'activityType' && event.target.closest('#activity-form')) {
     const form = event.target.closest('#activity-form');
-    const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
-    const draft = loadWizardDraft(draftKey);
-    const formData = new FormData(form);
-    for (const [key, value] of formData.entries()) draft[key] = value;
+    const { draftKey, draft } = collectWizardFormDraft(form);
     const next = applyActivityTypePreset(draft, state(), event.target.value);
     saveWizardDraft(draftKey, next);
     render();
@@ -1404,29 +1753,23 @@ document.addEventListener('click', async (event) => {
   } else if (action === 'wizard-next' || action === 'wizard-prev' || action === 'wizard-goto') {
     const form = document.querySelector('#activity-form');
     if (!form) return;
-    if (action === 'wizard-next' || action === 'wizard-prev' || action === 'wizard-goto') {
-      syncPresentersField(form);
-    }
+    syncPresentersField(form);
+    syncObjectivesField(form);
     if (action === 'wizard-next' && !form.reportValidity()) return;
-    const draftKey = form.dataset.draftKey || form.dataset.id || 'new';
-    const draft = loadWizardDraft(draftKey);
-    const previousType = draft.activityType;
-    const formData = new FormData(form);
-    for (const [key, value] of formData.entries()) draft[key] = value;
-    const activityType = formData.get('activityType') || draft.activityType || 'live';
-    const currentStep = Number(form.dataset.step);
-    const typeChanged = currentStep === 1 && previousType !== activityType;
-    const nextDraft = (typeChanged || !previousType)
-      ? applyActivityTypePreset(draft, state(), activityType)
-      : { ...draft, activityType };
-    if (ACTIVITY_TYPES[activityType]?.requiresTest && !nextDraft.testTemplateId) {
-      nextDraft.testTemplateId = state().templates.tests[0]?.id || '';
+    if (action === 'wizard-goto') {
+      const targetStep = Number(target.dataset.step) || 1;
+      if (targetStep > Number(form.dataset.step) && !form.reportValidity()) return;
     }
+    const { draftKey, draft } = collectWizardFormDraft(form);
+    const activityType = draft.activityType || 'live';
+    const currentStep = Number(form.dataset.step);
+    if (currentStep === 4) persistWizardStepAssets(form, draft);
+    const nextDraft = ensureWizardTemplates({ ...draft, activityType }, state());
     if (!ACTIVITY_TYPES[activityType]?.requiresTest) nextDraft.testTemplateId = '';
     saveWizardDraft(draftKey, nextDraft);
     let targetStep = currentStep;
-    if (action === 'wizard-next') targetStep = wizardNextStep(currentStep, activityType);
-    else if (action === 'wizard-prev') targetStep = wizardPrevStep(currentStep, activityType);
+    if (action === 'wizard-next') targetStep = wizardNextStep(currentStep);
+    else if (action === 'wizard-prev') targetStep = wizardPrevStep(currentStep);
     else targetStep = Number(target.dataset.step) || 1;
     const pubId = form.dataset.id || 'new';
     location.hash = `#/admin/activity/${pubId}/edit/${targetStep}`;
@@ -1499,11 +1842,42 @@ document.addEventListener('click', async (event) => {
       if (label) label.firstChild.textContent = `Presenter ${index + 1} `;
     });
     syncPresentersField(document.querySelector('#activity-form'));
+  } else if (action === 'add-objective') {
+    const list = document.querySelector('.objective-field-list');
+    if (!list) return;
+    const index = list.querySelectorAll('.objective-row').length + 1;
+    list.insertAdjacentHTML('beforeend', `
+      <div class="objective-row">
+        <label>Objective ${index}
+          <textarea class="objective-input" rows="2" required placeholder="What will learners be able to do?"></textarea>
+        </label>
+        <button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>
+      </div>`);
+    [...list.querySelectorAll('.objective-row')].forEach((row) => {
+      if (!row.querySelector('[data-action="remove-objective"]') && list.querySelectorAll('.objective-row').length > 4) {
+        row.insertAdjacentHTML('beforeend', '<button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>');
+      }
+    });
+  } else if (action === 'remove-objective') {
+    const row = target.closest('.objective-row');
+    const list = document.querySelector('.objective-field-list');
+    if (!row || !list || list.querySelectorAll('.objective-row').length <= 4) {
+      toast('Keep at least four learning objectives.', 'error');
+      return;
+    }
+    row.remove();
+    [...list.querySelectorAll('.objective-row')].forEach((item, index) => {
+      const label = item.querySelector('label');
+      if (label) label.childNodes[0].textContent = `Objective ${index + 1} `;
+      const remove = item.querySelector('[data-action="remove-objective"]');
+      if (list.querySelectorAll('.objective-row').length <= 4) remove?.remove();
+    });
+    syncObjectivesField(document.querySelector('#activity-form'));
   } else if (action === 'add-test-question') {
-    const form = document.querySelector('#test-template-form');
+    const form = document.querySelector('#test-template-form') || document.querySelector('#activity-form');
     const list = document.querySelector('#test-question-list');
     if (!form || !list) return;
-    const index = Number(form.dataset.questionCount) || 0;
+    const index = Number(form.dataset.questionCount) || list.querySelectorAll('.test-question-editor').length;
     form.dataset.questionCount = String(index + 1);
     list.insertAdjacentHTML('beforeend', `
       <article class="editor-card test-question-editor" data-question-index="${index}">
@@ -1515,15 +1889,15 @@ document.addEventListener('click', async (event) => {
           <label>Answer 3<input name="q_${index}_opt_2" value="Optional third answer"></label>
           <label>Answer 4<input name="q_${index}_opt_3" value="Optional fourth answer"></label>
         </div>
-        <label>Correct answer<select name="q_${index}_correct"><option value="0">Answer 1</option><option value="1">Answer 2</option></select></label>
+        <label>Correct answer<select name="q_${index}_correct"><option value="0">Answer 1</option><option value="1">Answer 2</option><option value="2">Answer 3</option><option value="3">Answer 4</option></select></label>
         <label>Linked objective (0 = first objective)<input type="number" min="0" step="1" name="q_${index}_objective" value="0"></label>
       </article>`);
   } else if (action === 'remove-test-question') {
-    const form = document.querySelector('#test-template-form');
+    const form = document.querySelector('#test-template-form') || document.querySelector('#activity-form');
     const block = target.closest('.test-question-editor');
     if (!form || !block) return;
     block.remove();
-    toast('Question removed. Save to apply changes.');
+    toast('Question removed.');
   } else if (action === 'toggle-publish') {
     const result = store.togglePublication(id);
     if (!result.ok) toast(result.errors.join(' '), 'error');
