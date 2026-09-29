@@ -677,7 +677,41 @@ legend{font-weight:600;padding:0;margin-bottom:20px;font-size:16px;line-height:1
 .objective-field-list{display:grid;gap:14px;margin-bottom:14px}
 .objective-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start;padding:16px;background:#f8faf9;border:1px solid var(--line);border-radius:14px}
 .objective-row label{margin:0}
-.wizard-eval-section{margin-top:16px}
+.wizard-eval-section,
+.editor-card.flat-section[data-section]{
+  position:relative;
+  margin-top:28px;
+  overflow:hidden;
+  border:1px solid #d5e0e8;
+  box-shadow:0 8px 22px rgba(30,62,77,.05);
+}
+.wizard-eval-section::before,
+.editor-card.flat-section[data-section]::before{
+  content:'';
+  position:absolute;
+  left:0;
+  right:0;
+  top:0;
+  height:5px;
+  background:linear-gradient(90deg,#3d6f94 0%, var(--blue) 42%, #a9c4dc 100%);
+}
+.wizard-eval-section:first-of-type,
+.wizard-page .wizard-eval-section:first-of-type,
+form .editor-card.flat-section[data-section]:first-of-type{
+  margin-top:18px;
+}
+.wizard-eval-section .section-heading.tight,
+.editor-card.flat-section[data-section] .section-heading.tight{
+  padding-top:6px;
+  margin-bottom:16px;
+  padding-bottom:14px;
+  border-bottom:1px solid #e4edf3;
+}
+.wizard-eval-section .section-heading.tight h3,
+.editor-card.flat-section[data-section] .section-heading.tight h2{
+  color:var(--navy);
+  letter-spacing:-.01em;
+}
 .wizard-test-block{margin-top:28px;display:grid;gap:16px}
 .named-steps.wizard-steps button i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#d9e2e4;font-style:normal;font-size:13px}
 .named-steps.wizard-steps button.active i{background:var(--green-dark);color:#fff}
