@@ -97,11 +97,35 @@ export function learnerProgress(state, publicationId) {
   };
 }
 
+export function normalizeKeywords(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim().toLowerCase()).filter(Boolean);
+  }
+  return String(value || '')
+    .split(/[\n,;]+/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function scoreOpenAnswer(answer, keywords) {
+  const text = String(answer || '').toLowerCase();
+  const keys = normalizeKeywords(keywords);
+  if (!keys.length || !text.trim()) return false;
+  return keys.every((keyword) => text.includes(keyword));
+}
+
+export function isTestAnswerCorrect(question, answer) {
+  if ((question?.type || 'mcq') === 'open') {
+    return scoreOpenAnswer(answer, question.keywords || question.markingScheme || []);
+  }
+  return Number(answer) === Number(question?.correct);
+}
+
 export function scoreTest(template, answers) {
   const questions = template?.questions || [];
-  const correct = questions.reduce((total, question) => {
-    return total + (Number(answers[question.id]) === question.correct ? 1 : 0);
-  }, 0);
+  const correct = questions.reduce((total, question) => (
+    total + (isTestAnswerCorrect(question, answers?.[question.id]) ? 1 : 0)
+  ), 0);
   const percent = questions.length ? Math.round((correct / questions.length) * 100) : 0;
   return {
     correct,

@@ -521,27 +521,53 @@ function objectiveLinkOptionsHtml(objectives, selectedIndex = 0) {
   return options.join('');
 }
 
+function testQuestionEditorHtml(question, index, objectives = []) {
+  const type = question?.type === 'open' ? 'open' : 'mcq';
+  const keywordsText = Array.isArray(question?.keywords)
+    ? question.keywords.join('\n')
+    : String(question?.markingScheme || question?.keywords || '');
+  const options = (question?.options || ['', '', '', '']).concat(['', '', '', '']).slice(0, 4);
+  return `
+    <article class="editor-card test-question-editor" data-question-index="${index}" data-type="${type}">
+      <div class="section-heading tight">
+        <h3>Question ${index + 1}</h3>
+        <button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button>
+      </div>
+      <label>Question type
+        <select class="question-type" name="q_${index}_type" data-action-change="toggle-test-question-type">
+          <option value="mcq" ${type === 'mcq' ? 'selected' : ''}>Multiple choice</option>
+          <option value="open" ${type === 'open' ? 'selected' : ''}>Open-ended</option>
+        </select>
+      </label>
+      <label>Question text<textarea name="q_${index}_text" rows="2" required placeholder="Type the question learners will see">${escapeHtml(question?.text || '')}</textarea></label>
+      <div class="mcq-fields" ${type === 'open' ? 'hidden' : ''}>
+        <div class="form-grid two">
+          ${options.map((option, optionIndex) => `
+            <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${type === 'mcq' && optionIndex < 2 ? 'required' : ''}></label>`).join('')}
+        </div>
+        <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
+          <option value="${optionIndex}" ${Number(question?.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
+      </div>
+      <div class="open-fields" ${type === 'mcq' ? 'hidden' : ''}>
+        <label>Marking scheme keywords
+          <textarea name="q_${index}_keywords" rows="3" placeholder="One keyword/phrase per line (or comma-separated)&#10;Example:&#10;attunement&#10;window of tolerance">${escapeHtml(keywordsText)}</textarea>
+        </label>
+        <p class="muted">Learners type a free-text answer. They are marked correct if their answer includes <strong>all</strong> of these keywords (not case-sensitive).</p>
+      </div>
+      <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectives, Number(question?.objectiveIndex) || 0)}</select></label>
+    </article>`;
+}
+
 function testQuestionsHtml(template, objectives = []) {
   const objectiveList = Array.isArray(objectives) ? objectives : [];
   const questions = template?.questions || [];
-  const blocks = questions.map((question, index) => `
-    <article class="editor-card test-question-editor" data-question-index="${index}">
-      <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
-      <label>Question text<textarea name="q_${index}_text" rows="2" required>${escapeHtml(question.text)}</textarea></label>
-      <div class="form-grid two">
-        ${(question.options || ['', '', '', '']).concat(['', '', '', '']).slice(0, 4).map((option, optionIndex) => `
-          <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${optionIndex < 2 ? 'required' : ''}></label>`).join('')}
-      </div>
-      <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
-        <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
-      <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectiveList, Number(question.objectiveIndex) || 0)}</select></label>
-    </article>`).join('');
+  const blocks = questions.map((question, index) => testQuestionEditorHtml(question, index, objectiveList)).join('');
   return `
     <div class="wizard-test-block" data-objectives="${escapeHtml(JSON.stringify(objectiveList))}">
       <div class="section-heading tight"><h3>Knowledge check</h3>
         <button type="button" class="btn secondary small" data-action="add-test-question">+ Add question</button>
       </div>
-      <p class="muted">Home Study and Hybrid need at least 12 scored questions. For each question, choose which learning objective it assesses (about 3 questions per objective). Pass score defaults to 80% with 3 attempts.</p>
+      <p class="muted">Home Study and Hybrid need at least 12 scored questions. Choose Multiple choice or Open-ended for each new question. Pass score defaults to 80% with 3 attempts.</p>
       <div class="form-grid two">
         <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template?.passPercent || 80}" required></label>
         <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template?.maxAttempts || 3}" required></label>
@@ -1133,18 +1159,7 @@ function adminTestEditor(id) {
     return adminShell('Test not found', 'Return to templates.', emptyState('Template unavailable', 'This knowledge check may have been removed.', routeLink('admin/templates', 'Back to templates', 'btn primary')), 'templates');
   }
   const genericObjectives = Array.from({ length: Math.max(8, ...template.questions.map((q) => Number(q.objectiveIndex) + 1 || 1)) }, (_, i) => `Objective ${i + 1}`);
-  const questionBlocks = template.questions.map((question, index) => `
-    <article class="editor-card test-question-editor" data-question-index="${index}">
-      <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
-      <label>Question text<textarea name="q_${index}_text" rows="2" required>${escapeHtml(question.text)}</textarea></label>
-      <div class="form-grid two">
-        ${(question.options || ['', '', '', '']).concat(['', '', '', '']).slice(0, 4).map((option, optionIndex) => `
-          <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${optionIndex < 2 ? 'required' : ''}></label>`).join('')}
-      </div>
-      <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
-        <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
-      <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(genericObjectives, Number(question.objectiveIndex) || 0)}</select></label>
-    </article>`).join('');
+  const questionBlocks = template.questions.map((question, index) => testQuestionEditorHtml(question, index, genericObjectives)).join('');
   const content = `
     ${nextStepBanner('Rename this knowledge check anytime (including after Duplicate), edit questions, then Save.')}
     <form id="test-template-form" class="wizard-test-block" data-id="${template.id}" data-question-count="${template.questions.length}" data-objectives="${escapeHtml(JSON.stringify(genericObjectives))}">
@@ -1154,7 +1169,7 @@ function adminTestEditor(id) {
           <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template.passPercent}" required></label>
           <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template.maxAttempts}" required></label>
         </div>
-        <p class="muted">Home Study activities need at least 12 questions. Assign each question to a learning objective (about 3 per objective).</p>
+        <p class="muted">Home Study activities need at least 12 questions. Use Multiple choice or Open-ended. Open-ended answers are scored by keyword matching.</p>
       </section>
       <div id="test-question-list">${questionBlocks}</div>
       <button type="button" class="btn secondary" data-action="add-test-question">+ Add question</button>
@@ -1166,22 +1181,43 @@ function adminTestEditor(id) {
 
 function collectTestTemplateForm(form) {
   const questions = [...form.querySelectorAll('.test-question-editor')].map((block, index) => {
-    const text = block.querySelector('textarea')?.value?.trim();
-    const options = [...block.querySelectorAll('.form-grid.two input')]
+    const type = block.querySelector('.question-type')?.value === 'open' ? 'open' : 'mcq';
+    const text = block.querySelector('textarea[name$="_text"]')?.value?.trim() || '';
+    const objectiveSelect = block.querySelector('select.objective-link, select[name$="_objective"]');
+    const objectiveIndex = Number(objectiveSelect?.value) || 0;
+    if (!text) return null;
+
+    if (type === 'open') {
+      const keywordsRaw = block.querySelector('textarea[name$="_keywords"]')?.value || '';
+      const keywords = keywordsRaw
+        .split(/[\n,;]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+      if (!keywords.length) return null;
+      return {
+        id: `tq-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'open',
+        text,
+        options: [],
+        correct: null,
+        keywords,
+        objectiveIndex
+      };
+    }
+
+    const options = [...block.querySelectorAll('.mcq-fields .form-grid.two input')]
       .map((input) => input.value.trim())
       .filter(Boolean);
-    const correct = Number(block.querySelector('select[name$="_correct"]')?.value
-      ?? block.querySelector('select:not(.objective-link)')?.value) || 0;
-    const objectiveSelect = block.querySelector('select.objective-link, select[name$="_objective"]');
-    const objectiveInput = block.querySelector('input[name$="_objective"]');
-    const objectiveIndex = Number(objectiveSelect?.value ?? objectiveInput?.value) || 0;
-    if (!text || options.length < 2) return null;
+    const correct = Number(block.querySelector('select[name$="_correct"]')?.value) || 0;
+    if (options.length < 2) return null;
     while (options.length < 4) options.push(`Option ${options.length + 1}`);
     return {
       id: `tq-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+      type: 'mcq',
       text,
       options: options.slice(0, 4),
       correct,
+      keywords: [],
       objectiveIndex
     };
   }).filter(Boolean);
@@ -1555,11 +1591,18 @@ function learnerTest(context, questionIndex = 0, preview = false) {
   const selected = answers[question.id] ?? '';
   const isLast = qIndex === template.questions.length - 1;
   const last = progress.attempts.at(-1);
+  const isOpen = (question.type || 'mcq') === 'open';
   const hiddenAnswers = Object.entries(answers)
     .filter(([qId]) => qId !== question.id)
     .map(([qId, value]) => `<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(value)}">`)
     .join('');
-  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}</p><h2>Knowledge check</h2><p>Choose the best answer, then press Continue. You need ${context.testTemplate.passPercent}% to pass.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${question.options.map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('')}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
+  const prompt = isOpen
+    ? 'Type your answer in the box below, then press Continue.'
+    : 'Choose the best answer, then press Continue.';
+  const answerFields = isOpen
+    ? `<label class="open-answer-field">Your answer<textarea name="${escapeHtml(question.id)}" rows="5" required placeholder="Write your answer here">${escapeHtml(selected)}</textarea></label>`
+    : (question.options || []).map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('');
+  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}${isOpen ? ' · Open-ended' : ' · Multiple choice'}</p><h2>Knowledge check</h2><p>${prompt} You need ${context.testTemplate.passPercent}% to pass.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${answerFields}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
   return learnerBase(context, content, { preview, label: 'Knowledge check' });
 }
 
@@ -1946,6 +1989,26 @@ document.addEventListener('submit', (event) => {
 });
 
 document.addEventListener('change', (event) => {
+  if (event.target.classList.contains('question-type')) {
+    const block = event.target.closest('.test-question-editor');
+    if (!block) return;
+    const type = event.target.value === 'open' ? 'open' : 'mcq';
+    block.dataset.type = type;
+    const mcq = block.querySelector('.mcq-fields');
+    const open = block.querySelector('.open-fields');
+    if (mcq) {
+      mcq.hidden = type !== 'mcq';
+      mcq.querySelectorAll('input').forEach((input, index) => {
+        input.required = type === 'mcq' && index < 2;
+      });
+    }
+    if (open) {
+      open.hidden = type !== 'open';
+      const keywords = open.querySelector('textarea[name$="_keywords"]');
+      if (keywords) keywords.required = type === 'open';
+    }
+    return;
+  }
   if (event.target.name === 'activityType' && event.target.closest('#activity-form')) {
     const form = event.target.closest('#activity-form');
     const { draftKey, draft } = collectWizardFormDraft(form);
@@ -2163,22 +2226,17 @@ document.addEventListener('click', async (event) => {
       objectives = parseObjectives(draft.objectives);
     }
     if (!objectives.length) objectives = ['Objective 1', 'Objective 2', 'Objective 3', 'Objective 4'];
-    list.insertAdjacentHTML('beforeend', `
-      <article class="editor-card test-question-editor" data-question-index="${index}">
-        <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
-        <label>Question text<textarea name="q_${index}_text" rows="2" required placeholder="Type the question learners will see"></textarea></label>
-        <div class="form-grid two">
-          <label>Answer 1<input name="q_${index}_opt_0" required></label>
-          <label>Answer 2<input name="q_${index}_opt_1" required></label>
-          <label>Answer 3<input name="q_${index}_opt_2" value="Optional third answer"></label>
-          <label>Answer 4<input name="q_${index}_opt_3" value="Optional fourth answer"></label>
-        </div>
-        <label>Correct answer<select name="q_${index}_correct"><option value="0">Answer 1</option><option value="1">Answer 2</option><option value="2">Answer 3</option><option value="3">Answer 4</option></select></label>
-        <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectives, 0)}</select></label>
-      </article>`);
+    list.insertAdjacentHTML('beforeend', testQuestionEditorHtml({
+      type: 'mcq',
+      text: '',
+      options: ['', '', '', ''],
+      correct: 0,
+      keywords: [],
+      objectiveIndex: 0
+    }, index, objectives));
     renumberTestQuestions(list);
     refreshWizardPreview();
-    list.querySelector('.test-question-editor:last-child textarea')?.focus();
+    list.querySelector('.test-question-editor:last-child .question-type')?.focus();
   } else if (action === 'remove-test-question') {
     event.preventDefault();
     const form = document.querySelector('#test-template-form') || document.querySelector('#activity-form');

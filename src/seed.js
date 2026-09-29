@@ -87,10 +87,12 @@ const testQuestions = [
   ['Integration can be supported by:', ['Reflection and regulated practice', 'Avoiding all sensation', 'Increasing urgency', 'Removing choice'], 0]
 ].map(([text, options, correct], index) => ({
   id: `tq-${index + 1}`,
+  type: 'mcq',
   objectiveIndex: index % 4,
   text,
   options,
-  correct
+  correct,
+  keywords: []
 }));
 
 export function cloneStandardSections() {

@@ -713,6 +713,12 @@ form .editor-card.flat-section[data-section]:first-of-type{
   letter-spacing:-.01em;
 }
 .wizard-test-block{margin-top:28px;display:grid;gap:16px}
+.test-question-editor .question-type{max-width:280px}
+.test-question-editor .mcq-fields,
+.test-question-editor .open-fields{display:grid;gap:14px;margin:12px 0}
+.test-question-editor .open-fields .muted{margin:0}
+.open-answer-field{display:grid;gap:8px;margin-top:12px;font-weight:600}
+.open-answer-field textarea{min-height:140px;font-weight:400}
 .named-steps.wizard-steps button i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#d9e2e4;font-style:normal;font-size:13px}
 .named-steps.wizard-steps button.active i{background:var(--green-dark);color:#fff}
 .named-steps.wizard-steps button.done i{background:#4f8c2d;color:#fff}
