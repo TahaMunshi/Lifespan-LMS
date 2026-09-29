@@ -59,12 +59,16 @@ function clearWizardDraft(id) {
   sessionStorage.removeItem(wizardDraftKey(id));
 }
 
-function wizardNextStep(currentStep) {
-  return Math.min(Number(currentStep) + 1, 5);
+function wizardNextStep(currentStep, activityType) {
+  let next = Math.min(Number(currentStep) + 1, 6);
+  if (next === 5 && !ACTIVITY_TYPES[activityType]?.requiresTest) next = 6;
+  return next;
 }
 
-function wizardPrevStep(currentStep) {
-  return Math.max(Number(currentStep) - 1, 1);
+function wizardPrevStep(currentStep, activityType) {
+  let prev = Math.max(Number(currentStep) - 1, 1);
+  if (prev === 5 && !ACTIVITY_TYPES[activityType]?.requiresTest) prev = 4;
+  return prev;
 }
 
 function wizardStepMeta(step) {
@@ -72,7 +76,8 @@ function wizardStepMeta(step) {
     ['Activity info', 'Name, type, dates, and location'],
     ['Objectives', 'Learning goals for this activity'],
     ['Presenters', 'Who teaches this activity'],
-    ['Evaluation & test', 'Questions learners will answer'],
+    ['Evaluation', 'Standard evaluation questions'],
+    ['Knowledge check', 'Scored test for Home Study / Hybrid'],
     ['Review & publish', 'Confirm and get the activity URL']
   ][Math.max(0, Number(step) - 1)] || ['Activity', ''];
 }
@@ -149,7 +154,10 @@ function syncPresentersField(form) {
   if (!form) return;
   const hidden = form.querySelector('input[name="presenters"]');
   if (!hidden) return;
-  hidden.value = [...form.querySelectorAll('.presenter-input')]
+  const inputs = [...form.querySelectorAll('.presenter-input')];
+  // Only sync when presenter inputs are on this page — never wipe draft values.
+  if (!inputs.length) return;
+  hidden.value = inputs
     .map((input) => input.value.trim())
     .filter(Boolean)
     .join('\n');
@@ -159,7 +167,9 @@ function syncObjectivesField(form) {
   if (!form) return;
   const hidden = form.querySelector('input[name="objectives"]');
   if (!hidden) return;
-  hidden.value = [...form.querySelectorAll('.objective-input')]
+  const inputs = [...form.querySelectorAll('.objective-input')];
+  if (!inputs.length) return;
+  hidden.value = inputs
     .map((input) => input.value.trim())
     .filter(Boolean)
     .join('\n');
@@ -175,8 +185,20 @@ function collectWizardFormDraft(form) {
     if (key.startsWith('q_') || key.includes('.')) continue;
     draft[key] = value;
   }
-  draft.presenters = formData.get('presenters') || draft.presenters || '';
-  draft.objectives = formData.get('objectives') || draft.objectives || '';
+  const presenterInputs = [...form.querySelectorAll('.presenter-input')];
+  if (presenterInputs.length) {
+    draft.presenters = presenterInputs.map((input) => input.value.trim()).filter(Boolean).join('\n');
+  } else {
+    const fromForm = String(formData.get('presenters') || '').trim();
+    if (fromForm) draft.presenters = fromForm;
+  }
+  const objectiveInputs = [...form.querySelectorAll('.objective-input')];
+  if (objectiveInputs.length) {
+    draft.objectives = objectiveInputs.map((input) => input.value.trim()).filter(Boolean).join('\n');
+  } else {
+    const fromForm = String(formData.get('objectives') || '').trim();
+    if (fromForm || formData.has('objectives')) draft.objectives = String(formData.get('objectives') || '');
+  }
   draft.activityName = formData.get('activityName') || draft.activityName || '';
   return { draftKey, draft };
 }
@@ -428,11 +450,18 @@ function buildWizardPreview(step, draft = {}) {
       ${objectiveRatingQuestion('preview-obj-live', objectives[0] || 'First learning objective', '5')}
       <p class="eyebrow" style="margin-top:18px">Presenters (auto from step 3)</p>
       <div class="presenter-heading"><span>1</span><div><h2>Presenter: ${escapeHtml(presenterNames[0])}</h2></div></div>
-      ${ACTIVITY_TYPES[activityType]?.requiresTest ? `
-        <p class="eyebrow" style="margin-top:18px">Knowledge check sample</p>
-        <fieldset class="test-question single-question"><legend>${escapeHtml(testText)}</legend>
-          ${testOptions.slice(0, 4).map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="preview-test" value="${optionIndex}" ${optionIndex === 0 ? 'checked' : ''} disabled><span>${escapeHtml(option || `Answer ${optionIndex + 1}`)}</span></label>`).join('')}
-        </fieldset>` : '<p class="muted">Live activities skip the knowledge check.</p>'}`;
+      ${ratingQuestion('preview-presenter-eval', { text: 'Presenter was knowledgeable and prepared.' }, '5')}`;
+  }
+  if (step === 5) {
+    if (!ACTIVITY_TYPES[activityType]?.requiresTest) {
+      return '<p class="muted">Live activities skip the knowledge check.</p>';
+    }
+    return `
+      <p class="eyebrow">Knowledge check sample</p>
+      <fieldset class="test-question single-question"><legend>${escapeHtml(testText)}</legend>
+        ${testOptions.slice(0, 4).map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="preview-test" value="${optionIndex}" ${optionIndex === 0 ? 'checked' : ''} disabled><span>${escapeHtml(option || `Answer ${optionIndex + 1}`)}</span></label>`).join('')}
+      </fieldset>
+      <p class="muted">Pass score and attempts are set on this step.</p>`;
   }
   return `
     <article class="preview-activity-card">
@@ -757,7 +786,10 @@ function adminActivityEditor(id, stepParam) {
     objectives: objectivesList.filter(Boolean)
   };
   const requiresTest = ACTIVITY_TYPES[publication.activityType]?.requiresTest;
-  const step = Math.min(5, Math.max(1, Number(stepParam) || 1));
+  let step = Math.min(6, Math.max(1, Number(stepParam) || 1));
+  if (step === 5 && !requiresTest) step = 6;
+  const totalSteps = requiresTest ? 6 : 5;
+  const stepLabel = requiresTest ? step : (step === 6 ? 5 : step);
   const savedFlag = existing && sessionStorage.getItem(`activity-saved-${existing.id}`);
   if (savedFlag) {
     sessionStorage.removeItem(`activity-saved-${existing.id}`);
@@ -792,10 +824,11 @@ function adminActivityEditor(id, stepParam) {
   const presenterCount = parsePresenters(presentersText).filter(Boolean).length || 1;
   const [stepTitle, stepHint] = wizardStepMeta(step);
 
-  const stepButtons = [1, 2, 3, 4, 5].map((item) => {
+  const visibleSteps = requiresTest ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 6];
+  const stepButtons = visibleSteps.map((item, index) => {
     const [label] = wizardStepMeta(item);
     const className = item === step ? 'active' : item < step ? 'done' : '';
-    return `<button type="button" class="${className}" data-action="wizard-goto" data-step="${item}"><i>${item}</i>${escapeHtml(label)}</button>`;
+    return `<button type="button" class="${className}" data-action="wizard-goto" data-step="${item}"><i>${index + 1}</i>${escapeHtml(label)}</button>`;
   }).join('');
 
   let body = '';
@@ -856,26 +889,36 @@ function adminActivityEditor(id, stepParam) {
     body = `
       <div class="wizard-split wide">
         <section class="wizard-page">
-          <h2>Evaluation &amp; test</h2>
+          <h2>Evaluation form</h2>
           <p>Standard questions are ready. Use <strong>+ Add question</strong> or <strong>Remove</strong> on any item. Objectives and presenters stay connected automatically.</p>
           <div class="wizard-auto-note">
             <strong>Already included automatically</strong>
             <ul>
               <li>${objectivesList.filter(Boolean).length} learning objectives become rating items</li>
               <li>${presenterCount} presenter${presenterCount === 1 ? '' : 's'} get the standard presenter questions</li>
-              <li>${requiresTest ? 'A scored knowledge check is required for this activity type' : 'Live activities do not need a scored knowledge check'}</li>
             </ul>
           </div>
           ${evalQuestionsHtml(sections)}
-          ${requiresTest ? testQuestionsHtml(testTemplate, objectivesList.filter(Boolean).length || 4) : '<input type="hidden" name="testTemplateId" value=""><p class="muted">No knowledge check for Live activities.</p>'}
           <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
-          <input type="hidden" name="testTemplateId" value="${escapeHtml(requiresTest ? (publication.testTemplateId || '') : '')}">
         </section>
-        ${wizardPreviewPane('Evaluation & test', buildWizardPreview(4, {
+        ${wizardPreviewPane('Evaluation', buildWizardPreview(4, {
           activityType: publication.activityType,
           objectives: objectivesList.join('\n'),
           presenters: presentersText,
-          sampleLearning: (sections.learning || [])[0]?.text || '',
+          sampleLearning: (sections.learning || [])[0]?.text || ''
+        }))}
+      </div>`;
+  } else if (step === 5) {
+    body = `
+      <div class="wizard-split wide">
+        <section class="wizard-page">
+          <h2>Knowledge check</h2>
+          <p>Home Study and Hybrid need a scored test. Add, edit, or remove questions here.</p>
+          ${testQuestionsHtml(testTemplate, objectivesList.filter(Boolean).length || 4)}
+          <input type="hidden" name="testTemplateId" value="${escapeHtml(publication.testTemplateId || '')}">
+        </section>
+        ${wizardPreviewPane('Knowledge check', buildWizardPreview(5, {
+          activityType: publication.activityType,
           sampleTest: testTemplate?.questions?.[0]?.text || '',
           sampleTestOptions: testTemplate?.questions?.[0]?.options || []
         }))}
@@ -925,7 +968,7 @@ function adminActivityEditor(id, stepParam) {
           <input type="hidden" name="cohortId" value="${escapeHtml(publication.cohortId || '')}">
           <input type="hidden" name="moduleId" value="${escapeHtml(publication.moduleId || '')}">
         </section>
-        ${wizardPreviewPane('Published activity', buildWizardPreview(5, {
+        ${wizardPreviewPane('Published activity', buildWizardPreview(6, {
           activityName, activityType: publication.activityType, creditHours: creditHoursValue, objectives: objectivesList.join('\n'), presenters: presentersText
         }))}
       </div>`;
@@ -935,14 +978,14 @@ function adminActivityEditor(id, stepParam) {
     <div class="wizard-nav">
       <div>${step > 1 ? `<button type="button" class="btn ghost" data-action="wizard-prev">Back</button>` : routeLink('admin/activities', 'Cancel', 'btn ghost')}</div>
       <div class="wizard-nav-right">
-        ${step < 5 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : `
+        ${step < 6 ? `<button type="button" class="btn primary" data-action="wizard-next">Continue</button>` : `
           <button type="submit" class="btn secondary" name="intent" value="draft">Save draft</button>
           <button type="submit" class="btn primary" name="intent" value="publish">Publish activity</button>`}
       </div>
     </div>`;
 
   const content = `
-    ${nextStepBanner(`Step ${step} of 5 — ${stepHint}`)}
+    ${nextStepBanner(`Step ${stepLabel} of ${totalSteps} — ${stepHint}`)}
     <nav class="named-steps wizard-steps" aria-label="Activity creation steps">${stepButtons}</nav>
     <form id="activity-form" class="wizard-layout" data-id="${escapeHtml(publication.id || '')}" data-step="${step}" data-draft-key="${escapeHtml(draftKey)}" data-question-count="${testTemplate?.questions?.length || 0}">
       <div class="wizard-panel">
@@ -958,20 +1001,20 @@ function adminActivityEditor(id, stepParam) {
       <input type="hidden" name="certificateTemplateId" value="${escapeHtml(publication.certificateTemplateId || '')}">
       ${step !== 1 ? `<input type="hidden" name="activityType" value="${escapeHtml(publication.activityType)}">` : ''}
       ${step !== 1 ? `<input type="hidden" name="activityName" value="${escapeHtml(activityName)}">` : ''}
-      ${![1, 5].includes(step) ? `
+      ${![1, 6].includes(step) ? `
         <input type="hidden" name="creditHours" value="${escapeHtml(creditHoursValue)}">
         <input type="hidden" name="location" value="${escapeHtml(locationValue)}">
         <input type="hidden" name="startDate" value="${escapeHtml(startDateValue)}">
         <input type="hidden" name="endDate" value="${escapeHtml(endDateValue)}">
         <input type="hidden" name="deadline" value="${escapeHtml(publication.deadline || '')}">
         <input type="hidden" name="cosponsor" value="${escapeHtml(cosponsorValue)}">` : ''}
-      ${![2, 5].includes(step) ? `<input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">` : ''}
-      ${![3, 5].includes(step) ? `<input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">` : ''}
+      ${![2, 6].includes(step) ? `<input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">` : ''}
+      ${![3, 6].includes(step) ? `<input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">` : ''}
     </form>`;
 
   return adminShell(
     existing ? 'Edit activity' : 'Create activity',
-    `${stepTitle} · Step ${step} of 5`,
+    `${stepTitle} · Step ${stepLabel} of ${totalSteps}`,
     content,
     'activities'
   );
@@ -1672,7 +1715,7 @@ function submitActivityForm(form, intent = 'draft') {
   if (requiresTest) {
     const test = byId(state().templates.tests, ensured.testTemplateId);
     if (!test || test.questions.length < 12) {
-      toast('Home Study and Hybrid need a knowledge check with at least 12 questions (step 4).', 'error');
+      toast('Home Study and Hybrid need a knowledge check with at least 12 questions (Knowledge check step).', 'error');
       return;
     }
   }
@@ -1724,7 +1767,7 @@ function submitActivityForm(form, intent = 'draft') {
       toast(published.errors.join(' '), 'error');
       sessionStorage.setItem(`activity-saved-${result.publication.id}`, '1');
       clearWizardDraft(draftKey);
-      location.hash = `#/admin/activity/${result.publication.id}/edit/5`;
+      location.hash = `#/admin/activity/${result.publication.id}/edit/6`;
       return;
     }
   }
@@ -1732,7 +1775,7 @@ function submitActivityForm(form, intent = 'draft') {
   clearWizardDraft(draftKey);
   sessionStorage.setItem(`activity-saved-${result.publication.id}`, '1');
   toast(intent === 'publish' ? 'Activity published.' : 'Draft saved.');
-  location.hash = `#/admin/activity/${result.publication.id}/edit/5`;
+  location.hash = `#/admin/activity/${result.publication.id}/edit/6`;
 }
 
 function exportReport(publicationId) {
@@ -1775,7 +1818,7 @@ document.addEventListener('submit', (event) => {
   if (!form.reportValidity()) return;
 
   if (form.id === 'activity-form') {
-    if (Number(form.dataset.step) !== 5) return;
+    if (Number(form.dataset.step) !== 6) return;
     syncPresentersField(form);
     syncObjectivesField(form);
     const submitter = event.submitter;
@@ -1942,20 +1985,23 @@ document.addEventListener('click', async (event) => {
     syncObjectivesField(form);
     if (action === 'wizard-next' && !form.reportValidity()) return;
     if (action === 'wizard-goto') {
-      const targetStep = Number(target.dataset.step) || 1;
+      let targetStep = Number(target.dataset.step) || 1;
       if (targetStep > Number(form.dataset.step) && !form.reportValidity()) return;
     }
     const { draftKey, draft } = collectWizardFormDraft(form);
     const activityType = draft.activityType || 'live';
     const currentStep = Number(form.dataset.step);
-    if (currentStep === 4) persistWizardStepAssets(form, draft);
+    if (currentStep === 4 || currentStep === 5) persistWizardStepAssets(form, draft);
     const nextDraft = ensureWizardTemplates({ ...draft, activityType }, state());
     if (!ACTIVITY_TYPES[activityType]?.requiresTest) nextDraft.testTemplateId = '';
     saveWizardDraft(draftKey, nextDraft);
     let targetStep = currentStep;
-    if (action === 'wizard-next') targetStep = wizardNextStep(currentStep);
-    else if (action === 'wizard-prev') targetStep = wizardPrevStep(currentStep);
-    else targetStep = Number(target.dataset.step) || 1;
+    if (action === 'wizard-next') targetStep = wizardNextStep(currentStep, activityType);
+    else if (action === 'wizard-prev') targetStep = wizardPrevStep(currentStep, activityType);
+    else {
+      targetStep = Number(target.dataset.step) || 1;
+      if (targetStep === 5 && !ACTIVITY_TYPES[activityType]?.requiresTest) targetStep = 6;
+    }
     const pubId = form.dataset.id || 'new';
     location.hash = `#/admin/activity/${pubId}/edit/${targetStep}`;
   } else if (action === 'test-next') {
