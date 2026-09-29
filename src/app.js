@@ -505,7 +505,24 @@ function refreshWizardPreview() {
   body.innerHTML = buildWizardPreview(step, readWizardPreviewDraft(form));
 }
 
-function testQuestionsHtml(template, objectiveCount = 4) {
+function objectiveLinkOptionsHtml(objectives, selectedIndex = 0) {
+  const list = (objectives || []).map((text) => String(text || '').trim()).filter(Boolean);
+  if (!list.length) {
+    return `<option value="0" selected>No objectives yet — add some in step 2</option>`;
+  }
+  const selected = Number(selectedIndex);
+  const options = list.map((text, index) => {
+    const label = text.length > 80 ? `${text.slice(0, 77)}…` : text;
+    return `<option value="${index}" ${selected === index ? 'selected' : ''}>Objective ${index + 1}: ${escapeHtml(label)}</option>`;
+  });
+  if (Number.isFinite(selected) && selected >= list.length) {
+    options.push(`<option value="${selected}" selected>Objective ${selected + 1} (not in current list)</option>`);
+  }
+  return options.join('');
+}
+
+function testQuestionsHtml(template, objectives = []) {
+  const objectiveList = Array.isArray(objectives) ? objectives : [];
   const questions = template?.questions || [];
   const blocks = questions.map((question, index) => `
     <article class="editor-card test-question-editor" data-question-index="${index}">
@@ -517,14 +534,14 @@ function testQuestionsHtml(template, objectiveCount = 4) {
       </div>
       <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
         <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
-      <label>Linked objective number (0 = first)<input type="number" min="0" max="${Math.max(0, objectiveCount - 1)}" step="1" name="q_${index}_objective" value="${Number(question.objectiveIndex) || 0}"></label>
+      <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectiveList, Number(question.objectiveIndex) || 0)}</select></label>
     </article>`).join('');
   return `
-    <div class="wizard-test-block">
+    <div class="wizard-test-block" data-objectives="${escapeHtml(JSON.stringify(objectiveList))}">
       <div class="section-heading tight"><h3>Knowledge check</h3>
         <button type="button" class="btn secondary small" data-action="add-test-question">+ Add question</button>
       </div>
-      <p class="muted">Home Study and Hybrid need at least 12 scored questions, with 3–4 linked to each objective. Pass score defaults to 80% with 3 attempts. You can remove any question.</p>
+      <p class="muted">Home Study and Hybrid need at least 12 scored questions. For each question, choose which learning objective it assesses (about 3 questions per objective). Pass score defaults to 80% with 3 attempts.</p>
       <div class="form-grid two">
         <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template?.passPercent || 80}" required></label>
         <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template?.maxAttempts || 3}" required></label>
@@ -914,7 +931,7 @@ function adminActivityEditor(id, stepParam) {
         <section class="wizard-page">
           <h2>Knowledge check</h2>
           <p>Home Study and Hybrid need a scored test. Add, edit, or remove questions here.</p>
-          ${testQuestionsHtml(testTemplate, objectivesList.filter(Boolean).length || 4)}
+          ${testQuestionsHtml(testTemplate, objectivesList.filter(Boolean))}
           <input type="hidden" name="testTemplateId" value="${escapeHtml(publication.testTemplateId || '')}">
         </section>
         ${wizardPreviewPane('Knowledge check', buildWizardPreview(5, {
@@ -1115,6 +1132,7 @@ function adminTestEditor(id) {
   if (!template) {
     return adminShell('Test not found', 'Return to templates.', emptyState('Template unavailable', 'This knowledge check may have been removed.', routeLink('admin/templates', 'Back to templates', 'btn primary')), 'templates');
   }
+  const genericObjectives = Array.from({ length: Math.max(8, ...template.questions.map((q) => Number(q.objectiveIndex) + 1 || 1)) }, (_, i) => `Objective ${i + 1}`);
   const questionBlocks = template.questions.map((question, index) => `
     <article class="editor-card test-question-editor" data-question-index="${index}">
       <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
@@ -1125,18 +1143,18 @@ function adminTestEditor(id) {
       </div>
       <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
         <option value="${optionIndex}" ${Number(question.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
-      <label>Linked objective number (0 = first)<input type="number" min="0" step="1" name="q_${index}_objective" value="${Number(question.objectiveIndex) || 0}"></label>
+      <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(genericObjectives, Number(question.objectiveIndex) || 0)}</select></label>
     </article>`).join('');
   const content = `
     ${nextStepBanner('Rename this knowledge check anytime (including after Duplicate), edit questions, then Save.')}
-    <form id="test-template-form" data-id="${template.id}" data-question-count="${template.questions.length}">
+    <form id="test-template-form" class="wizard-test-block" data-id="${template.id}" data-question-count="${template.questions.length}" data-objectives="${escapeHtml(JSON.stringify(genericObjectives))}">
       <section class="editor-card template-editor-head">
         <label>Knowledge check name<input name="name" value="${escapeHtml(template.name)}" required></label>
         <div class="form-grid two">
           <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template.passPercent}" required></label>
           <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template.maxAttempts}" required></label>
         </div>
-        <p class="muted">Home Study activities need at least 12 questions. Each objective needs at least three linked questions.</p>
+        <p class="muted">Home Study activities need at least 12 questions. Assign each question to a learning objective (about 3 per objective).</p>
       </section>
       <div id="test-question-list">${questionBlocks}</div>
       <button type="button" class="btn secondary" data-action="add-test-question">+ Add question</button>
@@ -1152,8 +1170,11 @@ function collectTestTemplateForm(form) {
     const options = [...block.querySelectorAll('.form-grid.two input')]
       .map((input) => input.value.trim())
       .filter(Boolean);
-    const correct = Number(block.querySelector('select')?.value) || 0;
-    const objectiveIndex = Number(block.querySelector('input[type="number"]')?.value) || 0;
+    const correct = Number(block.querySelector('select[name$="_correct"]')?.value
+      ?? block.querySelector('select:not(.objective-link)')?.value) || 0;
+    const objectiveSelect = block.querySelector('select.objective-link, select[name$="_objective"]');
+    const objectiveInput = block.querySelector('input[name$="_objective"]');
+    const objectiveIndex = Number(objectiveSelect?.value ?? objectiveInput?.value) || 0;
     if (!text || options.length < 2) return null;
     while (options.length < 4) options.push(`Option ${options.length + 1}`);
     return {
@@ -2128,6 +2149,20 @@ document.addEventListener('click', async (event) => {
     list.querySelector('.empty-test-note')?.remove();
     const index = Number(form.dataset.questionCount) || list.querySelectorAll('.test-question-editor').length;
     form.dataset.questionCount = String(index + 1);
+    let objectives = [];
+    try {
+      const raw = form.querySelector('.wizard-test-block')?.dataset.objectives
+        || form.dataset.objectives
+        || '[]';
+      objectives = JSON.parse(raw);
+    } catch {
+      objectives = [];
+    }
+    if (!objectives.length) {
+      const draft = loadWizardDraft(form.dataset.draftKey || form.dataset.id || 'new');
+      objectives = parseObjectives(draft.objectives);
+    }
+    if (!objectives.length) objectives = ['Objective 1', 'Objective 2', 'Objective 3', 'Objective 4'];
     list.insertAdjacentHTML('beforeend', `
       <article class="editor-card test-question-editor" data-question-index="${index}">
         <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
@@ -2139,7 +2174,7 @@ document.addEventListener('click', async (event) => {
           <label>Answer 4<input name="q_${index}_opt_3" value="Optional fourth answer"></label>
         </div>
         <label>Correct answer<select name="q_${index}_correct"><option value="0">Answer 1</option><option value="1">Answer 2</option><option value="2">Answer 3</option><option value="3">Answer 4</option></select></label>
-        <label>Linked objective (0 = first objective)<input type="number" min="0" step="1" name="q_${index}_objective" value="0"></label>
+        <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectives, 0)}</select></label>
       </article>`);
     renumberTestQuestions(list);
     refreshWizardPreview();
