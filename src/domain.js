@@ -50,7 +50,6 @@ export function validatePublication(state, publication) {
   if (!context?.module) errors.push('Select a module.');
   if (!publication.evaluationTemplateId) errors.push('Select an evaluation template.');
   if (!publication.deadline) errors.push('Set a completion deadline.');
-  if ((publication.objectives || []).filter(Boolean).length < 4) errors.push('Add at least four learning objectives.');
 
   const type = ACTIVITY_TYPES[publication.activityType];
   if (!type) errors.push('Select a valid activity type.');

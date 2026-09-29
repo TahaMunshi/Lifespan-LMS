@@ -70,7 +70,7 @@ function wizardPrevStep(currentStep) {
 function wizardStepMeta(step) {
   return [
     ['Activity info', 'Name, type, dates, and location'],
-    ['Objectives', 'At least four learning goals'],
+    ['Objectives', 'Learning goals for this activity'],
     ['Presenters', 'Who teaches this activity'],
     ['Evaluation & test', 'Questions learners will answer'],
     ['Review & publish', 'Confirm and get the activity URL']
@@ -86,9 +86,7 @@ function activityPreset(data, activityType = 'live') {
     || data.publications.find((item) => item.courseId === course?.id)
     || data.publications[0];
   const objectives = (sample?.objectives || []).filter(Boolean).slice(0, 4);
-  while (objectives.length < 4) {
-    objectives.push(`Learning goal ${objectives.length + 1}`);
-  }
+  if (!objectives.length) objectives.push('Learning goal 1');
   const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
   const endDate = module?.endDate || '2027-12-31';
   return {
@@ -131,19 +129,19 @@ function presenterFieldsHtml(presentersText) {
       <label>Presenter ${index + 1}
         <input type="text" class="presenter-input" value="${escapeHtml(name)}" required placeholder="Example: Pat Ogden, PhD">
       </label>
-      ${list.length > 1 ? `<button type="button" class="btn ghost small presenter-remove" data-action="remove-presenter">Remove</button>` : ''}
+      <button type="button" class="btn ghost small presenter-remove" data-action="remove-presenter"${list.length < 2 ? ' disabled title="Keep at least one presenter"' : ''}>Remove</button>
     </div>`).join('');
 }
 
 function objectiveFieldsHtml(objectives) {
   const list = [...objectives];
-  while (list.length < 4) list.push('');
+  if (!list.length) list.push('');
   return list.map((text, index) => `
     <div class="objective-row">
       <label>Objective ${index + 1}
-        <textarea class="objective-input" rows="2" required placeholder="What will learners be able to do?">${escapeHtml(text)}</textarea>
+        <textarea class="objective-input" rows="2" placeholder="What will learners be able to do?">${escapeHtml(text)}</textarea>
       </label>
-      ${list.length > 4 ? `<button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>` : ''}
+      <button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>
     </div>`).join('');
 }
 
@@ -311,16 +309,171 @@ function evalQuestionsHtml(sections) {
           <button type="button" class="btn secondary small" data-action="add-eval-question" data-section="${key}">+ Add question</button>
         </div>
         <div class="eval-question-list" data-section="${key}">
-          ${questions.map((question, index) => `
-            <div class="eval-question-row" data-qid="${escapeHtml(question.id)}">
-              <label>Question ${index + 1}
-                <textarea name="${key}.${question.id}" rows="2" required>${escapeHtml(question.text)}</textarea>
-              </label>
-              <button type="button" class="btn ghost small" data-action="remove-eval-question">Remove</button>
-            </div>`).join('') || '<p class="muted">No questions yet. Add one.</p>'}
+          ${questions.map((question, index) => evalQuestionRowHtml(key, question, index)).join('') || '<p class="muted empty-eval-note">No questions yet. Add one.</p>'}
         </div>
       </section>`;
   }).join('');
+}
+
+function evalQuestionRowHtml(section, question, index) {
+  const qid = question.id || `${section}-new-${Date.now().toString(36)}`;
+  const text = question.text || '';
+  return `
+    <div class="eval-question-row" data-qid="${escapeHtml(qid)}">
+      <label>Question ${index + 1}
+        <textarea name="${section}.${qid}" rows="2" required placeholder="Type the question learners will see">${escapeHtml(text)}</textarea>
+      </label>
+      <button type="button" class="btn ghost small" data-action="remove-eval-question">Remove</button>
+    </div>`;
+}
+
+function renumberEvalQuestions(list) {
+  if (!list) return;
+  [...list.querySelectorAll('.eval-question-row')].forEach((row, index) => {
+    const label = row.querySelector('label');
+    if (!label) return;
+    const textarea = label.querySelector('textarea');
+    label.childNodes[0].textContent = `Question ${index + 1} `;
+    if (textarea && !label.contains(textarea)) label.appendChild(textarea);
+  });
+  if (!list.querySelector('.eval-question-row') && !list.querySelector('.empty-eval-note')) {
+    list.innerHTML = '<p class="muted empty-eval-note">No questions yet. Add one.</p>';
+  }
+}
+
+function renumberTestQuestions(list) {
+  if (!list) return;
+  [...list.querySelectorAll('.test-question-editor')].forEach((block, index) => {
+    const heading = block.querySelector('h3');
+    if (heading) heading.textContent = `Question ${index + 1}`;
+    block.dataset.questionIndex = String(index);
+  });
+}
+
+function renumberObjectiveRows(list) {
+  if (!list) return;
+  const rows = [...list.querySelectorAll('.objective-row')];
+  rows.forEach((item, index) => {
+    const label = item.querySelector('label');
+    if (label) label.childNodes[0].textContent = `Objective ${index + 1} `;
+  });
+  if (!rows.length) {
+    list.innerHTML = '<p class="muted empty-objective-note">No objectives yet. Add as many as you need.</p>';
+  }
+}
+
+function renumberPresenterRows(list) {
+  if (!list) return;
+  const rows = [...list.querySelectorAll('.presenter-row')];
+  rows.forEach((item, index) => {
+    const label = item.querySelector('label');
+    if (label) label.childNodes[0].textContent = `Presenter ${index + 1} `;
+    const remove = item.querySelector('[data-action="remove-presenter"]');
+    if (remove) remove.disabled = rows.length < 2;
+  });
+}
+
+function wizardPreviewPane(title, body) {
+  return `
+    <aside class="wizard-preview" aria-live="polite">
+      <div class="wizard-preview-head">
+        <span>Learner preview</span>
+        <strong>${escapeHtml(title)}</strong>
+      </div>
+      <div class="wizard-preview-body" id="wizard-preview-body">${body}</div>
+      <p class="wizard-preview-note">This is how learners will see it. Edits update this preview live.</p>
+    </aside>`;
+}
+
+function buildWizardPreview(step, draft = {}) {
+  const activityName = String(draft.activityName || 'Activity name').trim() || 'Activity name';
+  const activityType = draft.activityType || 'live';
+  const location = String(draft.location || 'Location').trim() || 'Location';
+  const creditHours = draft.creditHours || '—';
+  const startDate = draft.startDate ? formatDate(draft.startDate) : 'Start date';
+  const endDate = draft.endDate ? formatDate(draft.endDate) : 'End date';
+  const objectives = parseObjectives(draft.objectives);
+  while (objectives.length < 1) objectives.push('Objective text appears here');
+  const presenters = parsePresenters(draft.presenters).filter(Boolean);
+  const presenterNames = presenters.length ? presenters : ['Presenter name'];
+  const learningText = draft.sampleLearning || 'Activity format enhanced achievement of learning objectives.';
+  const testText = draft.sampleTest || 'Sample knowledge-check question';
+  const testOptions = draft.sampleTestOptions || ['Answer A', 'Answer B', 'Answer C', 'Answer D'];
+
+  if (step === 1) {
+    return `
+      <article class="preview-activity-card">
+        <div class="activity-topline"><span class="type-chip">${escapeHtml(ACTIVITY_TYPES[activityType]?.label || 'Live')}</span><span>${escapeHtml(creditHours)} credit hours</span></div>
+        <h3>${escapeHtml(activityName)}</h3>
+        <p>${escapeHtml(location)} · ${escapeHtml(startDate)} – ${escapeHtml(endDate)}</p>
+        <p class="muted">Learners open this activity from your WordPress button / learner portal.</p>
+      </article>`;
+  }
+  if (step === 2) {
+    return `
+      <div class="scale-legend"><strong>How learners answer:</strong> 1 = strongly disagree … 5 = strongly agree</div>
+      ${objectives.slice(0, 4).map((objective, index) => objectiveRatingQuestion(`preview-obj-${index}`, objective || `Objective ${index + 1}`, '5')).join('')}`;
+  }
+  if (step === 3) {
+    return presenterNames.slice(0, 2).map((presenter, presenterIndex) => `
+      <div class="presenter-heading"><span>${presenterIndex + 1}</span><div><h2>Presenter: ${escapeHtml(presenter)}</h2><p>Standard presenter questions appear for each name.</p></div></div>
+      ${ratingQuestion(`preview-presenter-${presenterIndex}`, { text: 'Presenter was knowledgeable and prepared.' }, '5')}
+    `).join('') + (presenterNames.length > 2 ? `<p class="muted">+ ${presenterNames.length - 2} more presenter block${presenterNames.length - 2 === 1 ? '' : 's'}</p>` : '');
+  }
+  if (step === 4) {
+    return `
+      <p class="eyebrow">Evaluation sample</p>
+      ${ratingQuestion('preview-learning', { text: learningText }, '5')}
+      <p class="eyebrow" style="margin-top:18px">Objectives (auto from step 2)</p>
+      ${objectiveRatingQuestion('preview-obj-live', objectives[0] || 'First learning objective', '5')}
+      <p class="eyebrow" style="margin-top:18px">Presenters (auto from step 3)</p>
+      <div class="presenter-heading"><span>1</span><div><h2>Presenter: ${escapeHtml(presenterNames[0])}</h2></div></div>
+      ${ACTIVITY_TYPES[activityType]?.requiresTest ? `
+        <p class="eyebrow" style="margin-top:18px">Knowledge check sample</p>
+        <fieldset class="test-question single-question"><legend>${escapeHtml(testText)}</legend>
+          ${testOptions.slice(0, 4).map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="preview-test" value="${optionIndex}" ${optionIndex === 0 ? 'checked' : ''} disabled><span>${escapeHtml(option || `Answer ${optionIndex + 1}`)}</span></label>`).join('')}
+        </fieldset>` : '<p class="muted">Live activities skip the knowledge check.</p>'}`;
+  }
+  return `
+    <article class="preview-activity-card">
+      <div class="activity-topline"><span class="status published">Ready</span><span class="type-chip">${escapeHtml(ACTIVITY_TYPES[activityType]?.label || '')}</span></div>
+      <h3>${escapeHtml(activityName)}</h3>
+      <p>${objectives.filter(Boolean).length} objectives · ${presenterNames.length} presenter${presenterNames.length === 1 ? '' : 's'} · ${escapeHtml(creditHours)} hours</p>
+      <p class="muted">After publish you get a unique URL to paste on WordPress.</p>
+    </article>`;
+}
+
+function readWizardPreviewDraft(form) {
+  if (!form) return {};
+  syncPresentersField(form);
+  syncObjectivesField(form);
+  const data = new FormData(form);
+  const learningRow = form.querySelector('.eval-question-list[data-section="learning"] .eval-question-row textarea');
+  const testBlock = form.querySelector('.test-question-editor');
+  const testOptions = testBlock
+    ? [...testBlock.querySelectorAll('.form-grid.two input')].map((input) => input.value.trim())
+    : [];
+  return {
+    activityName: data.get('activityName') || form.querySelector('[name="activityName"]')?.value || '',
+    activityType: data.get('activityType') || form.querySelector('[name="activityType"]:checked')?.value || form.querySelector('[name="activityType"]')?.value || 'live',
+    location: data.get('location') || '',
+    creditHours: data.get('creditHours') || '',
+    startDate: data.get('startDate') || '',
+    endDate: data.get('endDate') || '',
+    objectives: data.get('objectives') || [...form.querySelectorAll('.objective-input')].map((input) => input.value).join('\n'),
+    presenters: data.get('presenters') || [...form.querySelectorAll('.presenter-input')].map((input) => input.value).join('\n'),
+    sampleLearning: learningRow?.value?.trim() || '',
+    sampleTest: testBlock?.querySelector('textarea')?.value?.trim() || '',
+    sampleTestOptions: testOptions
+  };
+}
+
+function refreshWizardPreview() {
+  const form = document.querySelector('#activity-form');
+  const body = document.querySelector('#wizard-preview-body');
+  if (!form || !body) return;
+  const step = Number(form.dataset.step) || 1;
+  body.innerHTML = buildWizardPreview(step, readWizardPreviewDraft(form));
 }
 
 function testQuestionsHtml(template, objectiveCount = 4) {
@@ -339,14 +492,16 @@ function testQuestionsHtml(template, objectiveCount = 4) {
     </article>`).join('');
   return `
     <div class="wizard-test-block">
-      <div class="section-heading tight"><h3>Knowledge check</h3></div>
-      <p class="muted">Home Study and Hybrid need at least 12 scored questions, with 3–4 linked to each objective. Pass score defaults to 80% with 3 attempts.</p>
+      <div class="section-heading tight"><h3>Knowledge check</h3>
+        <button type="button" class="btn secondary small" data-action="add-test-question">+ Add question</button>
+      </div>
+      <p class="muted">Home Study and Hybrid need at least 12 scored questions, with 3–4 linked to each objective. Pass score defaults to 80% with 3 attempts. You can remove any question.</p>
       <div class="form-grid two">
         <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template?.passPercent || 80}" required></label>
         <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template?.maxAttempts || 3}" required></label>
       </div>
       <input type="hidden" name="name" value="${escapeHtml(template?.name || 'Knowledge check')}">
-      <div id="test-question-list">${blocks}</div>
+      <div id="test-question-list">${blocks || '<p class="muted empty-test-note">No knowledge-check questions yet. Add one.</p>'}</div>
       <button type="button" class="btn secondary" data-action="add-test-question">+ Add question</button>
     </div>`;
 }
@@ -596,7 +751,6 @@ function adminActivityEditor(id, stepParam) {
   });
 
   const objectivesList = parseObjectives(merged.objectives);
-  while (objectivesList.length < 4) objectivesList.push(preset.objectives[objectivesList.length] || `Learning goal ${objectivesList.length + 1}`);
   const publication = {
     ...defaults,
     ...merged,
@@ -647,104 +801,134 @@ function adminActivityEditor(id, stepParam) {
   let body = '';
   if (step === 1) {
     body = `
-      <section class="wizard-page">
-        <h2>Activity information</h2>
-        <p>Enter the basics for this workshop, cohort, or module.</p>
-        <div class="form-grid two">
-          <label class="span-two">Activity / course name<input name="activityName" value="${escapeHtml(activityName)}" required placeholder="Example: Sensorimotor Module 1"></label>
-          <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
-          <label>Location<input name="location" value="${escapeHtml(locationValue)}" required placeholder="Los Angeles, CA or Online"></label>
-          <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
-          <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
-          <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline || '')}" required></label>
-          <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
-        </div>
-        <div class="section-heading tight" style="margin-top:24px"><h3>Activity type</h3></div>
-        <div class="type-choice-grid">
-          ${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `
-            <label class="type-choice">
-              <input type="radio" name="activityType" value="${value}" ${publication.activityType === value ? 'checked' : ''} required>
-              <span><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(ACTIVITY_TYPE_HELP[value])}</span></span>
-            </label>`).join('')}
-        </div>
-      </section>`;
+      <div class="wizard-split">
+        <section class="wizard-page">
+          <h2>Activity information</h2>
+          <p>Enter the basics for this workshop, cohort, or module.</p>
+          <div class="form-grid two">
+            <label class="span-two">Activity / course name<input name="activityName" value="${escapeHtml(activityName)}" required placeholder="Example: Sensorimotor Module 1"></label>
+            <label>Credit hours<input type="number" min="0.25" step="0.25" name="creditHours" value="${escapeHtml(creditHoursValue)}" required></label>
+            <label>Location<input name="location" value="${escapeHtml(locationValue)}" required placeholder="Los Angeles, CA or Online"></label>
+            <label>Start date<input type="date" name="startDate" value="${escapeHtml(startDateValue)}" required></label>
+            <label>End date<input type="date" name="endDate" value="${escapeHtml(endDateValue)}" required></label>
+            <label>Completion deadline<input type="date" name="deadline" value="${escapeHtml(publication.deadline || '')}" required></label>
+            <label class="span-two">Cosponsor (certificate wording)<input name="cosponsor" value="${escapeHtml(cosponsorValue)}" placeholder="Sensorimotor Psychotherapy Institute"></label>
+          </div>
+          <div class="section-heading tight" style="margin-top:24px"><h3>Activity type</h3></div>
+          <div class="type-choice-grid">
+            ${Object.entries(ACTIVITY_TYPES).map(([value, item]) => `
+              <label class="type-choice">
+                <input type="radio" name="activityType" value="${value}" ${publication.activityType === value ? 'checked' : ''} required>
+                <span><strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(ACTIVITY_TYPE_HELP[value])}</span></span>
+              </label>`).join('')}
+          </div>
+        </section>
+        ${wizardPreviewPane('Activity landing', buildWizardPreview(1, {
+          activityName, activityType: publication.activityType, location: locationValue, creditHours: creditHoursValue, startDate: startDateValue, endDate: endDateValue
+        }))}
+      </div>`;
   } else if (step === 2) {
     body = `
-      <section class="wizard-page">
-        <h2>Learning objectives</h2>
-        <p>Add at least four objectives. They appear on the evaluation automatically${requiresTest ? ' and drive knowledge-check coverage' : ''}.</p>
-        <div class="objective-field-list">${objectiveFieldsHtml(objectivesList)}</div>
-        <button type="button" class="btn secondary" data-action="add-objective">+ Add objective</button>
-        <input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">
-      </section>`;
+      <div class="wizard-split">
+        <section class="wizard-page">
+          <h2>Learning objectives</h2>
+          <p>Add as many learning objectives as you need — or none. They appear on the evaluation automatically${requiresTest ? ' and drive knowledge-check coverage' : ''}.</p>
+          <div class="objective-field-list">${objectiveFieldsHtml(objectivesList)}</div>
+          <button type="button" class="btn secondary" data-action="add-objective">+ Add objective</button>
+          <input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">
+        </section>
+        ${wizardPreviewPane('Objectives on the evaluation', buildWizardPreview(2, { objectives: objectivesList.join('\n') }))}
+      </div>`;
   } else if (step === 3) {
     body = `
-      <section class="wizard-page">
-        <h2>Presenters</h2>
-        <p>Add every presenter for this activity. Standard presenter evaluation questions are included automatically for each name.</p>
-        <div class="presenter-field-list">${presenterFieldsHtml(presentersText)}</div>
-        <button type="button" class="btn secondary" data-action="add-presenter">+ Add another presenter</button>
-        <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
-        <p class="muted" style="margin-top:18px">${presenterCount} presenter${presenterCount === 1 ? '' : 's'} × ${(sections.presenter || []).length} standard questions will appear on the learner evaluation.</p>
-      </section>`;
+      <div class="wizard-split">
+        <section class="wizard-page">
+          <h2>Presenters</h2>
+          <p>Add or remove presenters. Standard presenter evaluation questions are included automatically for each name.</p>
+          <div class="presenter-field-list">${presenterFieldsHtml(presentersText)}</div>
+          <button type="button" class="btn secondary" data-action="add-presenter">+ Add another presenter</button>
+          <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
+          <p class="muted" style="margin-top:18px">${presenterCount} presenter${presenterCount === 1 ? '' : 's'} × ${(sections.presenter || []).length} standard questions will appear on the learner evaluation.</p>
+        </section>
+        ${wizardPreviewPane('Presenter ratings', buildWizardPreview(3, { presenters: presentersText }))}
+      </div>`;
   } else if (step === 4) {
     body = `
-      <section class="wizard-page">
-        <h2>Evaluation &amp; test</h2>
-        <p>Standard questions are ready. Edit them here, or add activity-specific questions. Objectives and presenters are already connected.</p>
-        <div class="wizard-auto-note">
-          <strong>Already included automatically</strong>
-          <ul>
-            <li>${objectivesList.filter(Boolean).length} learning objectives become rating items</li>
-            <li>${presenterCount} presenter${presenterCount === 1 ? '' : 's'} get the standard presenter questions</li>
-            <li>${requiresTest ? 'A scored knowledge check is required for this activity type' : 'Live activities do not need a scored knowledge check'}</li>
-          </ul>
-        </div>
-        ${evalQuestionsHtml(sections)}
-        ${requiresTest ? testQuestionsHtml(testTemplate, objectivesList.filter(Boolean).length || 4) : '<input type="hidden" name="testTemplateId" value=""><p class="muted">No knowledge check for Live activities.</p>'}
-        <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
-        <input type="hidden" name="testTemplateId" value="${escapeHtml(requiresTest ? (publication.testTemplateId || '') : '')}">
-      </section>`;
+      <div class="wizard-split wide">
+        <section class="wizard-page">
+          <h2>Evaluation &amp; test</h2>
+          <p>Standard questions are ready. Use <strong>+ Add question</strong> or <strong>Remove</strong> on any item. Objectives and presenters stay connected automatically.</p>
+          <div class="wizard-auto-note">
+            <strong>Already included automatically</strong>
+            <ul>
+              <li>${objectivesList.filter(Boolean).length} learning objectives become rating items</li>
+              <li>${presenterCount} presenter${presenterCount === 1 ? '' : 's'} get the standard presenter questions</li>
+              <li>${requiresTest ? 'A scored knowledge check is required for this activity type' : 'Live activities do not need a scored knowledge check'}</li>
+            </ul>
+          </div>
+          ${evalQuestionsHtml(sections)}
+          ${requiresTest ? testQuestionsHtml(testTemplate, objectivesList.filter(Boolean).length || 4) : '<input type="hidden" name="testTemplateId" value=""><p class="muted">No knowledge check for Live activities.</p>'}
+          <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
+          <input type="hidden" name="testTemplateId" value="${escapeHtml(requiresTest ? (publication.testTemplateId || '') : '')}">
+        </section>
+        ${wizardPreviewPane('Evaluation & test', buildWizardPreview(4, {
+          activityType: publication.activityType,
+          objectives: objectivesList.join('\n'),
+          presenters: presentersText,
+          sampleLearning: (sections.learning || [])[0]?.text || '',
+          sampleTest: testTemplate?.questions?.[0]?.text || '',
+          sampleTestOptions: testTemplate?.questions?.[0]?.options || []
+        }))}
+      </div>`;
   } else {
     const publicUrlPreview = existing?.slug
       ? `${location.origin}${location.pathname}#/learn/${existing.slug}`
       : `${location.origin}${location.pathname}#/learn/${safeSlug(activityName || 'activity')}`;
+    const previewLink = existing?.id
+      ? routeLink(`preview/${existing.id}`, 'Open full learner preview', 'btn secondary')
+      : '<p class="muted">Save or publish first to open the full interactive learner preview.</p>';
     body = `
-      <section class="wizard-page">
-        <h2>Review &amp; publish</h2>
-        <p>Confirm everything looks right. Publishing creates the activity, connects evaluation${requiresTest ? ' and test' : ''}, and gives you the learner URL.</p>
-        <dl class="review-list">
-          <div><dt>Activity</dt><dd>${escapeHtml(activityName || 'Untitled')}</dd></div>
-          <div><dt>Type</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label || '')}</dd></div>
-          <div><dt>Credit hours</dt><dd>${escapeHtml(creditHoursValue)}</dd></div>
-          <div><dt>Dates</dt><dd>${escapeHtml(formatDate(startDateValue))} – ${escapeHtml(formatDate(endDateValue))}</dd></div>
-          <div><dt>Location</dt><dd>${escapeHtml(locationValue || '—')}</dd></div>
-          <div><dt>Deadline</dt><dd>${escapeHtml(formatDate(publication.deadline))}</dd></div>
-          <div><dt>Objectives</dt><dd>${objectivesList.filter(Boolean).length}</dd></div>
-          <div><dt>Presenters</dt><dd>${escapeHtml(parsePresenters(presentersText).filter(Boolean).join(', ') || '—')}</dd></div>
-          <div><dt>Evaluation</dt><dd>${escapeHtml(evalTemplate?.name || 'Standard evaluation')} · ${(sections.learning || []).length + (sections.presenter || []).length + (sections.environment || []).length + (sections.administration || []).length + (sections.written || []).length} questions</dd></div>
-          <div><dt>Knowledge check</dt><dd>${requiresTest ? `${testTemplate?.questions?.length || 0} questions · ${testTemplate?.passPercent || 80}% · ${testTemplate?.maxAttempts || 3} attempts` : 'Not required (Live)'}</dd></div>
-          <div><dt>Certificate</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.certificateTemplate === 'cert-study-v1' ? 'Home Study / Hybrid certificate' : 'Live certificate')}</dd></div>
-          <div><dt>URL preview</dt><dd>${escapeHtml(publicUrlPreview)}</dd></div>
-        </dl>
-        <input type="hidden" name="activityName" value="${escapeHtml(activityName)}">
-        <input type="hidden" name="activityType" value="${escapeHtml(publication.activityType)}">
-        <input type="hidden" name="creditHours" value="${escapeHtml(creditHoursValue)}">
-        <input type="hidden" name="location" value="${escapeHtml(locationValue)}">
-        <input type="hidden" name="startDate" value="${escapeHtml(startDateValue)}">
-        <input type="hidden" name="endDate" value="${escapeHtml(endDateValue)}">
-        <input type="hidden" name="deadline" value="${escapeHtml(publication.deadline || '')}">
-        <input type="hidden" name="cosponsor" value="${escapeHtml(cosponsorValue)}">
-        <input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">
-        <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
-        <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
-        <input type="hidden" name="testTemplateId" value="${escapeHtml(publication.testTemplateId || '')}">
-        <input type="hidden" name="certificateTemplateId" value="${escapeHtml(publication.certificateTemplateId || '')}">
-        <input type="hidden" name="courseId" value="${escapeHtml(publication.courseId || '')}">
-        <input type="hidden" name="versionId" value="${escapeHtml(publication.versionId || '')}">
-        <input type="hidden" name="cohortId" value="${escapeHtml(publication.cohortId || '')}">
-        <input type="hidden" name="moduleId" value="${escapeHtml(publication.moduleId || '')}">
-      </section>`;
+      <div class="wizard-split">
+        <section class="wizard-page">
+          <h2>Review &amp; publish</h2>
+          <p>Confirm everything looks right. Publishing creates the activity, connects evaluation${requiresTest ? ' and test' : ''}, and gives you the learner URL.</p>
+          <dl class="review-list">
+            <div><dt>Activity</dt><dd>${escapeHtml(activityName || 'Untitled')}</dd></div>
+            <div><dt>Type</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.label || '')}</dd></div>
+            <div><dt>Credit hours</dt><dd>${escapeHtml(creditHoursValue)}</dd></div>
+            <div><dt>Dates</dt><dd>${escapeHtml(formatDate(startDateValue))} – ${escapeHtml(formatDate(endDateValue))}</dd></div>
+            <div><dt>Location</dt><dd>${escapeHtml(locationValue || '—')}</dd></div>
+            <div><dt>Deadline</dt><dd>${escapeHtml(formatDate(publication.deadline))}</dd></div>
+            <div><dt>Objectives</dt><dd>${objectivesList.filter(Boolean).length}</dd></div>
+            <div><dt>Presenters</dt><dd>${escapeHtml(parsePresenters(presentersText).filter(Boolean).join(', ') || '—')}</dd></div>
+            <div><dt>Evaluation</dt><dd>${escapeHtml(evalTemplate?.name || 'Standard evaluation')} · ${(sections.learning || []).length + (sections.presenter || []).length + (sections.environment || []).length + (sections.administration || []).length + (sections.written || []).length} questions</dd></div>
+            <div><dt>Knowledge check</dt><dd>${requiresTest ? `${testTemplate?.questions?.length || 0} questions · ${testTemplate?.passPercent || 80}% · ${testTemplate?.maxAttempts || 3} attempts` : 'Not required (Live)'}</dd></div>
+            <div><dt>Certificate</dt><dd>${escapeHtml(ACTIVITY_TYPES[publication.activityType]?.certificateTemplate === 'cert-study-v1' ? 'Home Study / Hybrid certificate' : 'Live certificate')}</dd></div>
+            <div><dt>URL preview</dt><dd>${escapeHtml(publicUrlPreview)}</dd></div>
+          </dl>
+          <div class="celebrate-actions">${previewLink}</div>
+          <input type="hidden" name="activityName" value="${escapeHtml(activityName)}">
+          <input type="hidden" name="activityType" value="${escapeHtml(publication.activityType)}">
+          <input type="hidden" name="creditHours" value="${escapeHtml(creditHoursValue)}">
+          <input type="hidden" name="location" value="${escapeHtml(locationValue)}">
+          <input type="hidden" name="startDate" value="${escapeHtml(startDateValue)}">
+          <input type="hidden" name="endDate" value="${escapeHtml(endDateValue)}">
+          <input type="hidden" name="deadline" value="${escapeHtml(publication.deadline || '')}">
+          <input type="hidden" name="cosponsor" value="${escapeHtml(cosponsorValue)}">
+          <input type="hidden" name="objectives" value="${escapeHtml(objectivesList.join('\n'))}">
+          <input type="hidden" name="presenters" value="${escapeHtml(presentersText)}">
+          <input type="hidden" name="evaluationTemplateId" value="${escapeHtml(publication.evaluationTemplateId || '')}">
+          <input type="hidden" name="testTemplateId" value="${escapeHtml(publication.testTemplateId || '')}">
+          <input type="hidden" name="certificateTemplateId" value="${escapeHtml(publication.certificateTemplateId || '')}">
+          <input type="hidden" name="courseId" value="${escapeHtml(publication.courseId || '')}">
+          <input type="hidden" name="versionId" value="${escapeHtml(publication.versionId || '')}">
+          <input type="hidden" name="cohortId" value="${escapeHtml(publication.cohortId || '')}">
+          <input type="hidden" name="moduleId" value="${escapeHtml(publication.moduleId || '')}">
+        </section>
+        ${wizardPreviewPane('Published activity', buildWizardPreview(5, {
+          activityName, activityType: publication.activityType, creditHours: creditHoursValue, objectives: objectivesList.join('\n'), presenters: presentersText
+        }))}
+      </div>`;
   }
 
   const nav = `
@@ -1478,10 +1662,6 @@ function submitActivityForm(form, intent = 'draft') {
     return;
   }
   let objectives = parseObjectives(draft.objectives);
-  if (objectives.length < 4) {
-    toast('Add at least four learning objectives.', 'error');
-    return;
-  }
   const presenters = parsePresenters(draft.presenters).filter(Boolean);
   if (!presenters.length) {
     toast('Add at least one presenter.', 'error');
@@ -1728,6 +1908,11 @@ document.addEventListener('change', (event) => {
   }
 });
 
+document.addEventListener('input', (event) => {
+  if (!event.target.closest('#activity-form')) return;
+  refreshWizardPreview();
+});
+
 document.addEventListener('click', async (event) => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
@@ -1805,21 +1990,32 @@ document.addEventListener('click', async (event) => {
   } else if (action === 'goto-activity-edit') {
     location.hash = `#/admin/activity/${id}/edit/1`;
   } else if (action === 'add-eval-question') {
+    event.preventDefault();
+    event.stopPropagation();
     const section = target.dataset.section;
-    const list = document.querySelector(`.eval-question-list[data-section="${section}"]`);
-    if (!list) return;
-    const index = list.querySelectorAll('.eval-question-row').length + 1;
-    const qid = `${section}-new-${Date.now().toString(36)}`;
-    list.insertAdjacentHTML('beforeend', `
-      <div class="eval-question-row" data-qid="${qid}">
-        <label>Question ${index}
-          <textarea name="${section}.${qid}" rows="2" required></textarea>
-        </label>
-        <button type="button" class="btn ghost small" data-action="remove-eval-question">Remove</button>
-      </div>`);
+    const card = target.closest('.wizard-eval-section, .editor-card, section[data-section]');
+    const list = card?.querySelector('.eval-question-list')
+      || document.querySelector(`.eval-question-list[data-section="${section}"]`);
+    if (!list) {
+      toast('Could not add question here.', 'error');
+      return;
+    }
+    list.querySelector('.empty-eval-note')?.remove();
+    const index = list.querySelectorAll('.eval-question-row').length;
+    const qid = `${section || list.dataset.section || 'custom'}-new-${Date.now().toString(36)}`;
+    list.insertAdjacentHTML('beforeend', evalQuestionRowHtml(section || list.dataset.section || 'custom', { id: qid, text: '' }, index));
+    renumberEvalQuestions(list);
+    refreshWizardPreview();
+    list.querySelector('.eval-question-row:last-child textarea')?.focus();
   } else if (action === 'remove-eval-question') {
-    target.closest('.eval-question-row')?.remove();
+    event.preventDefault();
+    const row = target.closest('.eval-question-row');
+    const list = row?.closest('.eval-question-list');
+    row?.remove();
+    renumberEvalQuestions(list);
+    refreshWizardPreview();
   } else if (action === 'add-presenter') {
+    event.preventDefault();
     const list = document.querySelector('.presenter-field-list');
     const form = document.querySelector('#activity-form');
     if (!list || !form) return;
@@ -1832,57 +2028,64 @@ document.addEventListener('click', async (event) => {
         </label>
         <button type="button" class="btn ghost small presenter-remove" data-action="remove-presenter">Remove</button>
       </div>`);
+    renumberPresenterRows(list);
+    syncPresentersField(form);
+    refreshWizardPreview();
   } else if (action === 'remove-presenter') {
+    event.preventDefault();
     const row = target.closest('.presenter-row');
     const list = document.querySelector('.presenter-field-list');
-    if (!row || !list || list.querySelectorAll('.presenter-row').length < 2) return;
+    if (!row || !list) return;
+    if (list.querySelectorAll('.presenter-row').length < 2) {
+      toast('Keep at least one presenter.', 'error');
+      return;
+    }
     row.remove();
-    [...list.querySelectorAll('.presenter-row')].forEach((item, index) => {
-      const label = item.querySelector('label');
-      if (label) label.firstChild.textContent = `Presenter ${index + 1} `;
-    });
+    renumberPresenterRows(list);
     syncPresentersField(document.querySelector('#activity-form'));
+    refreshWizardPreview();
   } else if (action === 'add-objective') {
+    event.preventDefault();
     const list = document.querySelector('.objective-field-list');
     if (!list) return;
+    list.querySelector('.empty-objective-note')?.remove();
     const index = list.querySelectorAll('.objective-row').length + 1;
     list.insertAdjacentHTML('beforeend', `
       <div class="objective-row">
         <label>Objective ${index}
-          <textarea class="objective-input" rows="2" required placeholder="What will learners be able to do?"></textarea>
+          <textarea class="objective-input" rows="2" placeholder="What will learners be able to do?"></textarea>
         </label>
         <button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>
       </div>`);
-    [...list.querySelectorAll('.objective-row')].forEach((row) => {
-      if (!row.querySelector('[data-action="remove-objective"]') && list.querySelectorAll('.objective-row').length > 4) {
-        row.insertAdjacentHTML('beforeend', '<button type="button" class="btn ghost small" data-action="remove-objective">Remove</button>');
-      }
-    });
+    renumberObjectiveRows(list);
+    syncObjectivesField(document.querySelector('#activity-form'));
+    refreshWizardPreview();
+    list.querySelector('.objective-row:last-child textarea')?.focus();
   } else if (action === 'remove-objective') {
+    event.preventDefault();
     const row = target.closest('.objective-row');
     const list = document.querySelector('.objective-field-list');
-    if (!row || !list || list.querySelectorAll('.objective-row').length <= 4) {
-      toast('Keep at least four learning objectives.', 'error');
-      return;
-    }
+    if (!row || !list) return;
     row.remove();
-    [...list.querySelectorAll('.objective-row')].forEach((item, index) => {
-      const label = item.querySelector('label');
-      if (label) label.childNodes[0].textContent = `Objective ${index + 1} `;
-      const remove = item.querySelector('[data-action="remove-objective"]');
-      if (list.querySelectorAll('.objective-row').length <= 4) remove?.remove();
-    });
+    renumberObjectiveRows(list);
     syncObjectivesField(document.querySelector('#activity-form'));
+    refreshWizardPreview();
   } else if (action === 'add-test-question') {
+    event.preventDefault();
+    event.stopPropagation();
     const form = document.querySelector('#test-template-form') || document.querySelector('#activity-form');
     const list = document.querySelector('#test-question-list');
-    if (!form || !list) return;
+    if (!form || !list) {
+      toast('Could not add knowledge-check question.', 'error');
+      return;
+    }
+    list.querySelector('.empty-test-note')?.remove();
     const index = Number(form.dataset.questionCount) || list.querySelectorAll('.test-question-editor').length;
     form.dataset.questionCount = String(index + 1);
     list.insertAdjacentHTML('beforeend', `
       <article class="editor-card test-question-editor" data-question-index="${index}">
         <div class="section-heading tight"><h3>Question ${index + 1}</h3><button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button></div>
-        <label>Question text<textarea name="q_${index}_text" rows="2" required></textarea></label>
+        <label>Question text<textarea name="q_${index}_text" rows="2" required placeholder="Type the question learners will see"></textarea></label>
         <div class="form-grid two">
           <label>Answer 1<input name="q_${index}_opt_0" required></label>
           <label>Answer 2<input name="q_${index}_opt_1" required></label>
@@ -1892,11 +2095,21 @@ document.addEventListener('click', async (event) => {
         <label>Correct answer<select name="q_${index}_correct"><option value="0">Answer 1</option><option value="1">Answer 2</option><option value="2">Answer 3</option><option value="3">Answer 4</option></select></label>
         <label>Linked objective (0 = first objective)<input type="number" min="0" step="1" name="q_${index}_objective" value="0"></label>
       </article>`);
+    renumberTestQuestions(list);
+    refreshWizardPreview();
+    list.querySelector('.test-question-editor:last-child textarea')?.focus();
   } else if (action === 'remove-test-question') {
+    event.preventDefault();
     const form = document.querySelector('#test-template-form') || document.querySelector('#activity-form');
     const block = target.closest('.test-question-editor');
+    const list = document.querySelector('#test-question-list');
     if (!form || !block) return;
     block.remove();
+    renumberTestQuestions(list);
+    if (list && !list.querySelector('.test-question-editor')) {
+      list.innerHTML = '<p class="muted empty-test-note">No knowledge-check questions yet. Add one.</p>';
+    }
+    refreshWizardPreview();
     toast('Question removed.');
   } else if (action === 'toggle-publish') {
     const result = store.togglePublication(id);
