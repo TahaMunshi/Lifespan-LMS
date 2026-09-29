@@ -716,6 +716,12 @@ form .editor-card.flat-section[data-section]:first-of-type{
 .test-question-editor .question-type{max-width:280px}
 .test-question-editor .mcq-fields,
 .test-question-editor .open-fields{display:grid;gap:14px;margin:12px 0}
+.test-question-editor .mcq-fields[hidden],
+.test-question-editor .open-fields[hidden],
+.test-question-editor[data-type="mcq"] .open-fields,
+.test-question-editor[data-type="open"] .mcq-fields{display:none!important}
+.test-question-editor[data-type="mcq"] .mcq-fields,
+.test-question-editor[data-type="open"] .open-fields{display:grid}
 .test-question-editor .open-fields .muted{margin:0}
 .open-answer-field{display:grid;gap:8px;margin-top:12px;font-weight:600}
 .open-answer-field textarea{min-height:140px;font-weight:400}

@@ -534,13 +534,14 @@ function testQuestionEditorHtml(question, index, objectives = []) {
         <button type="button" class="btn ghost small" data-action="remove-test-question" data-index="${index}">Remove</button>
       </div>
       <label>Question type
-        <select class="question-type" name="q_${index}_type" data-action-change="toggle-test-question-type">
-          <option value="mcq" ${type === 'mcq' ? 'selected' : ''}>Multiple choice</option>
-          <option value="open" ${type === 'open' ? 'selected' : ''}>Open-ended</option>
+        <select class="question-type" name="q_${index}_type">
+          <option value="mcq" ${type === 'mcq' ? 'selected' : ''}>Multiple choice — answers list + correct answer</option>
+          <option value="open" ${type === 'open' ? 'selected' : ''}>Open-ended — question + marking scheme keywords</option>
         </select>
       </label>
       <label>Question text<textarea name="q_${index}_text" rows="2" required placeholder="Type the question learners will see">${escapeHtml(question?.text || '')}</textarea></label>
       <div class="mcq-fields" ${type === 'open' ? 'hidden' : ''}>
+        <p class="muted">Learners pick one answer. Set the correct option below.</p>
         <div class="form-grid two">
           ${options.map((option, optionIndex) => `
             <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${type === 'mcq' && optionIndex < 2 ? 'required' : ''}></label>`).join('')}
@@ -549,10 +550,11 @@ function testQuestionEditorHtml(question, index, objectives = []) {
           <option value="${optionIndex}" ${Number(question?.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
       </div>
       <div class="open-fields" ${type === 'mcq' ? 'hidden' : ''}>
+        <p class="muted">Learners see this question plus an empty text box. Score by keyword match against your marking scheme.</p>
         <label>Marking scheme keywords
-          <textarea name="q_${index}_keywords" rows="3" placeholder="One keyword/phrase per line (or comma-separated)&#10;Example:&#10;attunement&#10;window of tolerance">${escapeHtml(keywordsText)}</textarea>
+          <textarea name="q_${index}_keywords" rows="4" ${type === 'open' ? 'required' : ''} placeholder="One keyword/phrase per line&#10;Example:&#10;attunement&#10;window of tolerance">${escapeHtml(keywordsText)}</textarea>
         </label>
-        <p class="muted">Learners type a free-text answer. They are marked correct if their answer includes <strong>all</strong> of these keywords (not case-sensitive).</p>
+        <p class="muted">Marked correct only if the learner’s answer includes <strong>all</strong> keywords (not case-sensitive).</p>
       </div>
       <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectives, Number(question?.objectiveIndex) || 0)}</select></label>
     </article>`;
@@ -2000,12 +2002,16 @@ document.addEventListener('change', (event) => {
       mcq.hidden = type !== 'mcq';
       mcq.querySelectorAll('input').forEach((input, index) => {
         input.required = type === 'mcq' && index < 2;
+        if (type !== 'mcq') input.removeAttribute('required');
       });
     }
     if (open) {
       open.hidden = type !== 'open';
       const keywords = open.querySelector('textarea[name$="_keywords"]');
-      if (keywords) keywords.required = type === 'open';
+      if (keywords) {
+        if (type === 'open') keywords.required = true;
+        else keywords.removeAttribute('required');
+      }
     }
     return;
   }
