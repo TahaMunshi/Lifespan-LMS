@@ -521,12 +521,33 @@ function objectiveLinkOptionsHtml(objectives, selectedIndex = 0) {
   return options.join('');
 }
 
+function scoringModeRadiosHtml(name, selected, itemLabel) {
+  const mode = selected === 'per_item' ? 'per_item' : 'fraction';
+  return `
+    <fieldset class="scoring-mode">
+      <legend>Point assignment</legend>
+      <label class="scoring-option">
+        <input type="radio" name="${name}" value="fraction" ${mode === 'fraction' ? 'checked' : ''}>
+        <span><strong>Question worth 1 point</strong> — each correct ${itemLabel} is an equal fraction (adds up to 1). Partial credit allowed.</span>
+      </label>
+      <label class="scoring-option">
+        <input type="radio" name="${name}" value="per_item" ${mode === 'per_item' ? 'checked' : ''}>
+        <span><strong>Each correct ${itemLabel} = 1 point</strong> — question total = number of correct ${itemLabel}s.</span>
+      </label>
+    </fieldset>`;
+}
+
 function testQuestionEditorHtml(question, index, objectives = []) {
-  const type = question?.type === 'open' ? 'open' : 'mcq';
+  const rawType = question?.type || 'mcq';
+  const type = rawType === 'open' || rawType === 'multi' ? rawType : 'mcq';
   const keywordsText = Array.isArray(question?.keywords)
     ? question.keywords.join('\n')
     : String(question?.markingScheme || question?.keywords || '');
   const options = (question?.options || ['', '', '', '']).concat(['', '', '', '']).slice(0, 4);
+  const correctAnswers = Array.isArray(question?.correctAnswers)
+    ? question.correctAnswers.map(Number)
+    : [];
+  const scoringMode = question?.scoringMode === 'per_item' ? 'per_item' : 'fraction';
   return `
     <article class="editor-card test-question-editor" data-question-index="${index}" data-type="${type}">
       <div class="section-heading tight">
@@ -535,13 +556,14 @@ function testQuestionEditorHtml(question, index, objectives = []) {
       </div>
       <label>Question type
         <select class="question-type" name="q_${index}_type">
-          <option value="mcq" ${type === 'mcq' ? 'selected' : ''}>Multiple choice — answers list + correct answer</option>
-          <option value="open" ${type === 'open' ? 'selected' : ''}>Open-ended — question + marking scheme keywords</option>
+          <option value="mcq" ${type === 'mcq' ? 'selected' : ''}>Multiple choice — one correct answer</option>
+          <option value="multi" ${type === 'multi' ? 'selected' : ''}>Select all that apply — partial credit</option>
+          <option value="open" ${type === 'open' ? 'selected' : ''}>Narrative written answer — keywords</option>
         </select>
       </label>
       <label>Question text<textarea name="q_${index}_text" rows="2" required placeholder="Type the question learners will see">${escapeHtml(question?.text || '')}</textarea></label>
-      <div class="mcq-fields" ${type === 'open' ? 'hidden' : ''}>
-        <p class="muted">Learners pick one answer. Set the correct option below.</p>
+      <div class="mcq-fields" ${type === 'mcq' ? '' : 'hidden'}>
+        <p class="muted">Learners pick <strong>one</strong> answer. Set the correct option below.</p>
         <div class="form-grid two">
           ${options.map((option, optionIndex) => `
             <label>Answer ${optionIndex + 1}<input name="q_${index}_opt_${optionIndex}" value="${escapeHtml(option)}" ${type === 'mcq' && optionIndex < 2 ? 'required' : ''}></label>`).join('')}
@@ -549,12 +571,27 @@ function testQuestionEditorHtml(question, index, objectives = []) {
         <label>Correct answer<select name="q_${index}_correct">${[0, 1, 2, 3].map((optionIndex) => `
           <option value="${optionIndex}" ${Number(question?.correct) === optionIndex ? 'selected' : ''}>Answer ${optionIndex + 1}</option>`).join('')}</select></label>
       </div>
-      <div class="open-fields" ${type === 'mcq' ? 'hidden' : ''}>
+      <div class="multi-fields" ${type === 'multi' ? '' : 'hidden'}>
+        <p class="muted">Learners can select <strong>multiple</strong> answers. Check every option that is correct. Wrong selections reduce the score.</p>
+        <div class="multi-option-list">
+          ${options.map((option, optionIndex) => `
+            <div class="multi-option-row">
+              <label class="multi-correct-flag" title="Mark as correct">
+                <input type="checkbox" name="q_${index}_multi_correct_${optionIndex}" value="1" ${correctAnswers.includes(optionIndex) ? 'checked' : ''}>
+                <span>Correct</span>
+              </label>
+              <label class="grow">Answer ${optionIndex + 1}<input name="q_${index}_multi_opt_${optionIndex}" value="${escapeHtml(option)}" ${type === 'multi' && optionIndex < 2 ? 'required' : ''}></label>
+            </div>`).join('')}
+        </div>
+        ${scoringModeRadiosHtml(`q_${index}_multi_scoring`, scoringMode, 'answer')}
+      </div>
+      <div class="open-fields" ${type === 'open' ? '' : 'hidden'}>
         <p class="muted">Learners see this question plus an empty text box. Score by keyword match against your marking scheme.</p>
-        <label>Marking scheme keywords
+        <label>Required keywords (marking scheme)
           <textarea name="q_${index}_keywords" rows="4" ${type === 'open' ? 'required' : ''} placeholder="One keyword/phrase per line&#10;Example:&#10;attunement&#10;window of tolerance">${escapeHtml(keywordsText)}</textarea>
         </label>
-        <p class="muted">Marked correct only if the learner’s answer includes <strong>all</strong> keywords (not case-sensitive).</p>
+        ${scoringModeRadiosHtml(`q_${index}_open_scoring`, type === 'open' ? scoringMode : 'fraction', 'keyword')}
+        <p class="muted">Matching is not case-sensitive. Partial credit follows the point assignment above.</p>
       </div>
       <label>This question tests which learning objective?<select class="objective-link" name="q_${index}_objective">${objectiveLinkOptionsHtml(objectives, Number(question?.objectiveIndex) || 0)}</select></label>
     </article>`;
@@ -569,7 +606,7 @@ function testQuestionsHtml(template, objectives = []) {
       <div class="section-heading tight"><h3>Knowledge check</h3>
         <button type="button" class="btn secondary small" data-action="add-test-question">+ Add question</button>
       </div>
-      <p class="muted">Home Study and Hybrid need at least 12 scored questions. Choose Multiple choice or Open-ended for each new question. Pass score defaults to 80% with 3 attempts.</p>
+      <p class="muted">Home Study and Hybrid need at least 12 scored questions. Choose Multiple choice, Select all that apply, or Narrative for each question. Pass score defaults to 80% with 3 attempts.</p>
       <div class="form-grid two">
         <label>Pass score (%)<input type="number" min="1" max="100" name="passPercent" value="${template?.passPercent || 80}" required></label>
         <label>Maximum attempts<input type="number" min="1" max="10" name="maxAttempts" value="${template?.maxAttempts || 3}" required></label>
@@ -1183,11 +1220,13 @@ function adminTestEditor(id) {
 
 function collectTestTemplateForm(form) {
   const questions = [...form.querySelectorAll('.test-question-editor')].map((block, index) => {
-    const type = block.querySelector('.question-type')?.value === 'open' ? 'open' : 'mcq';
+    const rawType = block.querySelector('.question-type')?.value || 'mcq';
+    const type = rawType === 'open' || rawType === 'multi' ? rawType : 'mcq';
     const text = block.querySelector('textarea[name$="_text"]')?.value?.trim() || '';
     const objectiveSelect = block.querySelector('select.objective-link, select[name$="_objective"]');
     const objectiveIndex = Number(objectiveSelect?.value) || 0;
     if (!text) return null;
+    const id = `tq-${index + 1}-${Math.random().toString(36).slice(2, 7)}`;
 
     if (type === 'open') {
       const keywordsRaw = block.querySelector('textarea[name$="_keywords"]')?.value || '';
@@ -1196,13 +1235,47 @@ function collectTestTemplateForm(form) {
         .map((item) => item.trim())
         .filter(Boolean);
       if (!keywords.length) return null;
+      const scoringMode = block.querySelector('.open-fields input[type="radio"][name*="_open_scoring"]:checked')?.value === 'per_item'
+        ? 'per_item'
+        : 'fraction';
       return {
-        id: `tq-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+        id,
         type: 'open',
         text,
         options: [],
         correct: null,
+        correctAnswers: [],
         keywords,
+        scoringMode,
+        objectiveIndex
+      };
+    }
+
+    if (type === 'multi') {
+      const rows = [...block.querySelectorAll('.multi-option-row')].map((row) => ({
+        text: row.querySelector('input[name*="_multi_opt_"]')?.value?.trim() || '',
+        correct: Boolean(row.querySelector('input[name*="_multi_correct_"]')?.checked)
+      }));
+      const filled = rows.filter((row) => row.text);
+      if (filled.length < 2) return null;
+      while (filled.length < 4) filled.push({ text: `Option ${filled.length + 1}`, correct: false });
+      const options = filled.slice(0, 4).map((row) => row.text);
+      const correctAnswers = filled.slice(0, 4)
+        .map((row, optionIndex) => (row.correct ? optionIndex : -1))
+        .filter((optionIndex) => optionIndex >= 0);
+      if (!correctAnswers.length) return null;
+      const scoringMode = block.querySelector('.multi-fields input[type="radio"][name*="_multi_scoring"]:checked')?.value === 'per_item'
+        ? 'per_item'
+        : 'fraction';
+      return {
+        id,
+        type: 'multi',
+        text,
+        options,
+        correct: correctAnswers[0],
+        correctAnswers,
+        keywords: [],
+        scoringMode,
         objectiveIndex
       };
     }
@@ -1214,12 +1287,14 @@ function collectTestTemplateForm(form) {
     if (options.length < 2) return null;
     while (options.length < 4) options.push(`Option ${options.length + 1}`);
     return {
-      id: `tq-${index + 1}-${Math.random().toString(36).slice(2, 7)}`,
+      id,
       type: 'mcq',
       text,
       options: options.slice(0, 4),
       correct,
+      correctAnswers: [correct],
       keywords: [],
+      scoringMode: 'fraction',
       objectiveIndex
     };
   }).filter(Boolean);
@@ -1229,6 +1304,45 @@ function collectTestTemplateForm(form) {
     maxAttempts: new FormData(form).get('maxAttempts'),
     questions
   };
+}
+
+/** Collect form answers, preserving multi-select checkbox groups as number arrays. */
+function collectAnswerMap(form) {
+  const answers = {};
+  const formData = new FormData(form);
+  for (const [key, value] of formData.entries()) {
+    if (Object.prototype.hasOwnProperty.call(answers, key)) {
+      const existing = answers[key];
+      answers[key] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+    } else {
+      answers[key] = value;
+    }
+  }
+  Object.keys(answers).forEach((key) => {
+    if (Array.isArray(answers[key])) {
+      answers[key] = answers[key].map(Number).filter((n) => Number.isInteger(n));
+    }
+  });
+  // Empty select-all-that-apply must overwrite any previously stored selections.
+  if (form.dataset.qtype === 'multi') {
+    const checkbox = form.querySelector('fieldset.single-question input[type="checkbox"]');
+    if (checkbox && !Object.prototype.hasOwnProperty.call(answers, checkbox.name)) {
+      answers[checkbox.name] = [];
+    }
+  }
+  return answers;
+}
+
+function hiddenAnswerInputs(answers, currentQuestionId) {
+  return Object.entries(answers)
+    .filter(([qId]) => qId !== currentQuestionId)
+    .flatMap(([qId, value]) => {
+      if (Array.isArray(value)) {
+        return value.map((item) => `<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(item)}">`);
+      }
+      return [`<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(value)}">`];
+    })
+    .join('');
 }
 
 function reportData(publicationId) {
@@ -1593,18 +1707,36 @@ function learnerTest(context, questionIndex = 0, preview = false) {
   const selected = answers[question.id] ?? '';
   const isLast = qIndex === template.questions.length - 1;
   const last = progress.attempts.at(-1);
-  const isOpen = (question.type || 'mcq') === 'open';
-  const hiddenAnswers = Object.entries(answers)
-    .filter(([qId]) => qId !== question.id)
-    .map(([qId, value]) => `<input type="hidden" name="${escapeHtml(qId)}" value="${escapeHtml(value)}">`)
-    .join('');
+  const type = question.type || 'mcq';
+  const isOpen = type === 'open';
+  const isMulti = type === 'multi';
+  const selectedIndexes = Array.isArray(selected)
+    ? selected.map(Number)
+    : (selected === '' || selected == null ? [] : [Number(selected)]);
+  const hiddenAnswers = hiddenAnswerInputs(answers, question.id);
+  const typeLabel = isOpen ? 'Narrative' : isMulti ? 'Select all that apply' : 'Multiple choice';
   const prompt = isOpen
     ? 'Type your answer in the box below, then press Continue.'
-    : 'Choose the best answer, then press Continue.';
-  const answerFields = isOpen
-    ? `<label class="open-answer-field">Your answer<textarea name="${escapeHtml(question.id)}" rows="5" required placeholder="Write your answer here">${escapeHtml(selected)}</textarea></label>`
-    : (question.options || []).map((option, optionIndex) => `<label class="test-choice"><input type="radio" name="${question.id}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required><span>${escapeHtml(option)}</span></label>`).join('');
-  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1}${isOpen ? ' · Open-ended' : ' · Multiple choice'}</p><h2>Knowledge check</h2><p>${prompt} You need ${context.testTemplate.passPercent}% to pass.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${answerFields}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
+    : isMulti
+      ? 'Select all answers that apply, then press Continue.'
+      : 'Choose the best answer, then press Continue.';
+  let answerFields;
+  if (isOpen) {
+    answerFields = `<label class="open-answer-field">Your answer<textarea name="${escapeHtml(question.id)}" rows="5" required placeholder="Write your answer here">${escapeHtml(selected)}</textarea></label>`;
+  } else if (isMulti) {
+    answerFields = (question.options || []).map((option, optionIndex) => `
+      <label class="test-choice">
+        <input type="checkbox" name="${escapeHtml(question.id)}" value="${optionIndex}" ${selectedIndexes.includes(optionIndex) ? 'checked' : ''}>
+        <span>${escapeHtml(option)}</span>
+      </label>`).join('');
+  } else {
+    answerFields = (question.options || []).map((option, optionIndex) => `
+      <label class="test-choice">
+        <input type="radio" name="${escapeHtml(question.id)}" value="${optionIndex}" ${String(selected) === String(optionIndex) ? 'checked' : ''} required>
+        <span>${escapeHtml(option)}</span>
+      </label>`).join('');
+  }
+  const content = `${last ? `<div class="result-banner fail"><strong>${last.percent}% — not yet passed</strong><span>${progress.attemptsRemaining} attempt${progress.attemptsRemaining === 1 ? '' : 's'} remaining.</span></div>` : ''}<form id="test-form" data-id="${context.publication.id}" data-preview="${preview}" data-question="${qIndex}" data-qtype="${type}"><section class="evaluation-card test-single"><div class="evaluation-heading"><p class="eyebrow">Question ${qIndex + 1} of ${template.questions.length} · Attempt ${progress.attempts.length + 1} · ${typeLabel}</p><h2>Knowledge check</h2><p>${prompt} You need ${context.testTemplate.passPercent}% to pass.</p></div>${hiddenAnswers}<fieldset class="test-question single-question"><legend>${escapeHtml(question.text)}</legend>${answerFields}</fieldset><div class="form-navigation"><a class="btn ghost" href="${learnerHref(context, '', preview)}">Save for later</a>${isLast ? '<button class="btn primary" type="submit">Submit answers</button>' : `<button type="button" class="btn primary" data-action="test-next">Continue</button>`}</div></section></form>`;
   return learnerBase(context, content, { preview, label: 'Knowledge check' });
 }
 
@@ -1973,7 +2105,7 @@ document.addEventListener('submit', (event) => {
     const context = activityContext(state(), form.dataset.id);
     const preview = form.dataset.preview === 'true';
     const stored = testAnswers(form.dataset.id, preview);
-    const answers = { ...stored, ...Object.fromEntries(new FormData(form)) };
+    const answers = { ...stored, ...collectAnswerMap(form) };
     const result = scoreTest(context.testTemplate, answers);
     clearTestAnswers(form.dataset.id, preview);
     if (preview) previewSession(form.dataset.id).attempts.push({ ...result, answers });
@@ -1984,7 +2116,7 @@ document.addEventListener('submit', (event) => {
       toast(`Passed with ${result.percent}%. Certificate unlocked.`);
       location.hash = learnerHref(context, 'certificate', preview);
     } else {
-      toast(`${result.percent}% — 80% is required.`, 'error');
+      toast(`${result.percent}% — ${context.testTemplate.passPercent || 80}% is required.`, 'error');
       location.hash = learnerHref(context, 'test/0', preview);
     }
   }
@@ -1994,15 +2126,24 @@ document.addEventListener('change', (event) => {
   if (event.target.classList.contains('question-type')) {
     const block = event.target.closest('.test-question-editor');
     if (!block) return;
-    const type = event.target.value === 'open' ? 'open' : 'mcq';
+    const raw = event.target.value;
+    const type = raw === 'open' || raw === 'multi' ? raw : 'mcq';
     block.dataset.type = type;
     const mcq = block.querySelector('.mcq-fields');
+    const multi = block.querySelector('.multi-fields');
     const open = block.querySelector('.open-fields');
     if (mcq) {
       mcq.hidden = type !== 'mcq';
       mcq.querySelectorAll('input').forEach((input, index) => {
-        input.required = type === 'mcq' && index < 2;
-        if (type !== 'mcq') input.removeAttribute('required');
+        if (type === 'mcq' && index < 2) input.required = true;
+        else input.removeAttribute('required');
+      });
+    }
+    if (multi) {
+      multi.hidden = type !== 'multi';
+      multi.querySelectorAll('input[name*="_multi_opt_"]').forEach((input, index) => {
+        if (type === 'multi' && index < 2) input.required = true;
+        else input.removeAttribute('required');
       });
     }
     if (open) {
@@ -2096,11 +2237,13 @@ document.addEventListener('click', async (event) => {
     location.hash = `#/admin/activity/${pubId}/edit/${targetStep}`;
   } else if (action === 'test-next') {
     const form = document.querySelector('#test-form');
-    if (!form || !form.reportValidity()) return;
+    if (!form) return;
+    // Select-all-that-apply allows zero selections (scores as 0); other types use native required.
+    if (form.dataset.qtype !== 'multi' && !form.reportValidity()) return;
     const context = activityContext(state(), form.dataset.id);
     const preview = form.dataset.preview === 'true';
     const qIndex = Number(form.dataset.question) || 0;
-    const answers = { ...testAnswers(form.dataset.id, preview), ...Object.fromEntries(new FormData(form)) };
+    const answers = { ...testAnswers(form.dataset.id, preview), ...collectAnswerMap(form) };
     saveTestAnswers(form.dataset.id, preview, answers);
     location.hash = learnerHref(context, `test/${qIndex + 1}`, preview);
   } else if (action === 'duplicate-publication') {
@@ -2237,7 +2380,9 @@ document.addEventListener('click', async (event) => {
       text: '',
       options: ['', '', '', ''],
       correct: 0,
+      correctAnswers: [],
       keywords: [],
+      scoringMode: 'fraction',
       objectiveIndex: 0
     }, index, objectives));
     renumberTestQuestions(list);

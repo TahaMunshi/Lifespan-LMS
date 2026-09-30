@@ -713,16 +713,33 @@ form .editor-card.flat-section[data-section]:first-of-type{
   letter-spacing:-.01em;
 }
 .wizard-test-block{margin-top:28px;display:grid;gap:16px}
-.test-question-editor .question-type{max-width:280px}
+.test-question-editor .question-type{max-width:420px}
 .test-question-editor .mcq-fields,
+.test-question-editor .multi-fields,
 .test-question-editor .open-fields{display:grid;gap:14px;margin:12px 0}
 .test-question-editor .mcq-fields[hidden],
+.test-question-editor .multi-fields[hidden],
 .test-question-editor .open-fields[hidden],
+.test-question-editor[data-type="mcq"] .multi-fields,
 .test-question-editor[data-type="mcq"] .open-fields,
-.test-question-editor[data-type="open"] .mcq-fields{display:none!important}
+.test-question-editor[data-type="multi"] .mcq-fields,
+.test-question-editor[data-type="multi"] .open-fields,
+.test-question-editor[data-type="open"] .mcq-fields,
+.test-question-editor[data-type="open"] .multi-fields{display:none!important}
 .test-question-editor[data-type="mcq"] .mcq-fields,
+.test-question-editor[data-type="multi"] .multi-fields,
 .test-question-editor[data-type="open"] .open-fields{display:grid}
 .test-question-editor .open-fields .muted{margin:0}
+.multi-option-list{display:grid;gap:10px}
+.multi-option-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:end}
+.multi-correct-flag{display:flex;align-items:center;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#f7f9f9;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;min-height:42px}
+.multi-correct-flag input{accent-color:var(--green-dark)}
+.multi-option-row .grow{display:grid;gap:6px}
+.scoring-mode{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0;display:grid;gap:10px;background:#fafbfb}
+.scoring-mode legend{padding:0 6px;font-size:12px;font-weight:700;color:var(--navy)}
+.scoring-option{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start;font-size:13px;color:#334047;cursor:pointer}
+.scoring-option input{margin-top:3px;accent-color:var(--green-dark)}
+.scoring-option strong{color:var(--navy)}
 .open-answer-field{display:grid;gap:8px;margin-top:12px;font-weight:600}
 .open-answer-field textarea{min-height:140px;font-weight:400}
 .named-steps.wizard-steps button i{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#d9e2e4;font-style:normal;font-size:13px}

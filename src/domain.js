@@ -107,29 +107,103 @@ export function normalizeKeywords(value) {
     .filter(Boolean);
 }
 
-export function scoreOpenAnswer(answer, keywords) {
+export function normalizeSelectedIndexes(answer) {
+  if (Array.isArray(answer)) {
+    return [...new Set(answer.map(Number).filter((n) => Number.isInteger(n) && n >= 0))];
+  }
+  if (answer == null || answer === '') return [];
+  if (typeof answer === 'string' && answer.includes(',')) {
+    return [...new Set(answer.split(',').map(Number).filter((n) => Number.isInteger(n) && n >= 0))];
+  }
+  const single = Number(answer);
+  return Number.isInteger(single) && single >= 0 ? [single] : [];
+}
+
+/** Scoring modes for multi-select and narrative: fraction (max 1) or per_item (1 pt each). */
+export function questionMaxPoints(question) {
+  const type = question?.type || 'mcq';
+  if (type === 'mcq') return 1;
+  if (type === 'multi') {
+    const n = (question.correctAnswers || []).map(Number).filter((i) => Number.isInteger(i)).length;
+    if (!n) return 0;
+    return question.scoringMode === 'per_item' ? n : 1;
+  }
+  if (type === 'open') {
+    const n = normalizeKeywords(question.keywords || question.markingScheme || []).length;
+    if (!n) return 0;
+    return question.scoringMode === 'per_item' ? n : 1;
+  }
+  return 1;
+}
+
+export function scoreOpenAnswer(answer, keywords, scoringMode = 'all') {
   const text = String(answer || '').toLowerCase();
   const keys = normalizeKeywords(keywords);
-  if (!keys.length || !text.trim()) return false;
-  return keys.every((keyword) => text.includes(keyword));
+  if (!keys.length) return { earned: 0, max: 0 };
+  const max = scoringMode === 'per_item' ? keys.length : 1;
+  if (!text.trim()) return { earned: 0, max };
+  const matched = keys.filter((keyword) => text.includes(keyword)).length;
+  if (scoringMode === 'per_item') {
+    return { earned: matched, max };
+  }
+  if (scoringMode === 'fraction') {
+    return { earned: matched / keys.length, max: 1 };
+  }
+  // all-or-nothing (legacy default)
+  return { earned: matched === keys.length ? 1 : 0, max: 1 };
+}
+
+export function scoreMultiAnswer(question, answer) {
+  const correctSet = [...new Set((question?.correctAnswers || []).map(Number).filter((i) => Number.isInteger(i) && i >= 0))];
+  const max = questionMaxPoints({ ...question, type: 'multi' });
+  if (!correctSet.length) return { earned: 0, max: 0 };
+  const selected = normalizeSelectedIndexes(answer);
+  const truePositives = selected.filter((i) => correctSet.includes(i)).length;
+  const falsePositives = selected.filter((i) => !correctSet.includes(i)).length;
+  const scoringMode = question?.scoringMode === 'per_item' ? 'per_item' : 'fraction';
+  if (scoringMode === 'per_item') {
+    return { earned: Math.max(0, truePositives - falsePositives), max };
+  }
+  // fraction: each correct option is 1/N; wrong selections deduct 1/N; floor at 0
+  const raw = (truePositives - falsePositives) / correctSet.length;
+  return { earned: Math.max(0, Math.min(1, raw)), max: 1 };
+}
+
+export function scoreQuestion(question, answer) {
+  const type = question?.type || 'mcq';
+  if (type === 'open') {
+    return scoreOpenAnswer(answer, question.keywords || question.markingScheme || [], question.scoringMode || 'all');
+  }
+  if (type === 'multi') {
+    return scoreMultiAnswer(question, answer);
+  }
+  const max = 1;
+  const earned = Number(answer) === Number(question?.correct) ? 1 : 0;
+  return { earned, max };
 }
 
 export function isTestAnswerCorrect(question, answer) {
-  if ((question?.type || 'mcq') === 'open') {
-    return scoreOpenAnswer(answer, question.keywords || question.markingScheme || []);
-  }
-  return Number(answer) === Number(question?.correct);
+  const { earned, max } = scoreQuestion(question, answer);
+  return max > 0 && earned >= max;
 }
 
 export function scoreTest(template, answers) {
   const questions = template?.questions || [];
-  const correct = questions.reduce((total, question) => (
-    total + (isTestAnswerCorrect(question, answers?.[question.id]) ? 1 : 0)
-  ), 0);
-  const percent = questions.length ? Math.round((correct / questions.length) * 100) : 0;
+  let earned = 0;
+  let total = 0;
+  let fullyCorrect = 0;
+  questions.forEach((question) => {
+    const result = scoreQuestion(question, answers?.[question.id]);
+    earned += result.earned;
+    total += result.max;
+    if (result.max > 0 && result.earned >= result.max) fullyCorrect += 1;
+  });
+  const percent = total ? Math.round((earned / total) * 100) : 0;
   return {
-    correct,
-    total: questions.length,
+    correct: Math.round(earned * 100) / 100,
+    fullyCorrect,
+    total: Math.round(total * 100) / 100,
+    questionCount: questions.length,
     percent,
     passed: percent >= (template?.passPercent || 80)
   };
