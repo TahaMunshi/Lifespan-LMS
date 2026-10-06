@@ -75,14 +75,15 @@ export function isExpired(publication, now = new Date()) {
   return Number.isFinite(deadline.getTime()) && deadline < now;
 }
 
-export function learnerProgress(state, publicationId) {
+export function learnerProgress(state, publicationId, clientId = null) {
+  const mine = (item) => !clientId || item.clientId === clientId;
   const submission = [...state.submissions]
     .reverse()
-    .find((item) => item.publicationId === publicationId && !item.id.startsWith('seed-'));
-  const attempts = state.attempts.filter((item) => item.publicationId === publicationId);
+    .find((item) => item.publicationId === publicationId && mine(item) && !String(item.id).startsWith('seed-'));
+  const attempts = state.attempts.filter((item) => item.publicationId === publicationId && mine(item));
   const passedAttempt = attempts.find((item) => item.passed);
   const attendanceConfirmed = (state.attendanceConfirmations || [])
-    .some((item) => item.publicationId === publicationId);
+    .some((item) => item.publicationId === publicationId && mine(item));
   const context = activityContext(state, publicationId);
   const requiresTest = ACTIVITY_TYPES[context?.publication.activityType]?.requiresTest ?? false;
   const eligible = Boolean(submission && (requiresTest ? passedAttempt : attendanceConfirmed));

@@ -91,15 +91,14 @@ function activityPreset(data, activityType = 'live') {
     || data.publications.find((item) => item.courseId === course?.id)
     || data.publications[0];
   const objectives = (sample?.objectives || []).filter(Boolean).slice(0, 4);
-  if (!objectives.length) objectives.push('Learning goal 1');
   const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
-  const endDate = module?.endDate || '2027-12-31';
+  const endDate = module?.endDate || '';
   return {
     activityName: course?.name || '',
-    courseId: course?.id || data.courses[0].id,
-    versionId: version?.id || data.versions[0].id,
-    cohortId: cohort?.id || data.cohorts[0].id,
-    moduleId: module?.id || data.modules[0].id,
+    courseId: course?.id || '',
+    versionId: version?.id || '',
+    cohortId: cohort?.id || '',
+    moduleId: module?.id || '',
     evaluationTemplateId: null,
     testTemplateId: null,
     certificateTemplateId: ACTIVITY_TYPES[activityType]?.certificateTemplate || 'cert-live-v1',
@@ -203,7 +202,7 @@ function collectWizardFormDraft(form) {
   return { draftKey, draft };
 }
 
-function ensureWizardTemplates(draft, data) {
+async function ensureWizardTemplates(draft, data) {
   const activityType = draft.activityType || 'live';
   const requiresTest = ACTIVITY_TYPES[activityType]?.requiresTest;
   const activityName = String(draft.activityName || '').trim() || 'New activity';
@@ -211,17 +210,17 @@ function ensureWizardTemplates(draft, data) {
   const sharedTestIds = new Set(['test-standard-v1']);
 
   if (!draft.evaluationTemplateId || !byId(data.templates.evaluations, draft.evaluationTemplateId)) {
-    const created = store.createEvaluationTemplate(`Evaluation — ${activityName}`);
+    const created = await store.createEvaluationTemplate(`Evaluation — ${activityName}`);
     draft.evaluationTemplateId = created.id;
     draft.ownedEval = true;
   } else if (!draft.ownedEval && sharedEvalIds.has(draft.evaluationTemplateId)) {
-    const duplicated = store.duplicateEvaluationTemplate(draft.evaluationTemplateId, `Evaluation — ${activityName}`);
+    const duplicated = await store.duplicateEvaluationTemplate(draft.evaluationTemplateId, `Evaluation — ${activityName}`);
     if (duplicated) {
       draft.evaluationTemplateId = duplicated.id;
       draft.ownedEval = true;
     }
   } else if (draft.ownedEval) {
-    store.saveEvaluationTemplate(draft.evaluationTemplateId, { name: `Evaluation — ${activityName}` });
+    await store.saveEvaluationTemplate(draft.evaluationTemplateId, { name: `Evaluation — ${activityName}` });
   }
 
   if (requiresTest) {
@@ -229,22 +228,22 @@ function ensureWizardTemplates(draft, data) {
       const sourceId = data.templates.tests.find((item) => item.id === 'test-standard-v1')?.id
         || data.templates.tests[0]?.id;
       const created = sourceId
-        ? store.duplicateTestTemplate(sourceId)
-        : store.createTestTemplate(`Knowledge check — ${activityName}`);
+        ? await store.duplicateTestTemplate(sourceId)
+        : await store.createTestTemplate(`Knowledge check — ${activityName}`);
       if (created) {
-        store.saveTestTemplate(created.id, { name: `Knowledge check — ${activityName}` });
+        await store.saveTestTemplate(created.id, { name: `Knowledge check — ${activityName}` });
         draft.testTemplateId = created.id;
         draft.ownedTest = true;
       }
     } else if (!draft.ownedTest && sharedTestIds.has(draft.testTemplateId)) {
-      const duplicated = store.duplicateTestTemplate(draft.testTemplateId);
+      const duplicated = await store.duplicateTestTemplate(draft.testTemplateId);
       if (duplicated) {
-        store.saveTestTemplate(duplicated.id, { name: `Knowledge check — ${activityName}` });
+        await store.saveTestTemplate(duplicated.id, { name: `Knowledge check — ${activityName}` });
         draft.testTemplateId = duplicated.id;
         draft.ownedTest = true;
       }
     } else if (draft.ownedTest) {
-      store.saveTestTemplate(draft.testTemplateId, { name: `Knowledge check — ${activityName}` });
+      await store.saveTestTemplate(draft.testTemplateId, { name: `Knowledge check — ${activityName}` });
     }
   } else {
     draft.testTemplateId = '';
@@ -271,24 +270,24 @@ function collectEvalSectionsFromForm(form) {
   return Object.keys(sections).length ? sections : null;
 }
 
-function persistWizardStepAssets(form, draft) {
+async function persistWizardStepAssets(form, draft) {
   const sections = collectEvalSectionsFromForm(form);
   if (sections && draft.evaluationTemplateId) {
-    store.saveEvaluationTemplate(draft.evaluationTemplateId, {
+    await store.saveEvaluationTemplate(draft.evaluationTemplateId, {
       name: `Evaluation — ${String(draft.activityName || 'Activity').trim() || 'Activity'}`,
       sections
     });
   }
   if (ACTIVITY_TYPES[draft.activityType]?.requiresTest && draft.testTemplateId && form.querySelector('.test-question-editor')) {
     const payload = collectTestTemplateForm(form);
-    store.saveTestTemplate(draft.testTemplateId, {
+    await store.saveTestTemplate(draft.testTemplateId, {
       ...payload,
       name: `Knowledge check — ${String(draft.activityName || 'Activity').trim() || 'Activity'}`
     });
   }
 }
 
-function applyActivityTypePreset(draft, data, activityType) {
+async function applyActivityTypePreset(draft, data, activityType) {
   const preset = activityPreset(data, activityType);
   const next = {
     ...draft,
@@ -654,7 +653,7 @@ function previewSession(publicationId) {
 }
 
 function progressFor(context, preview = false) {
-  if (!preview) return learnerProgress(state(), context.publication.id);
+  if (!preview) return learnerProgress(state(), context.publication.id, store.clientId());
   const session = previewSession(context.publication.id);
   const requiresTest = ACTIVITY_TYPES[context.publication.activityType].requiresTest;
   const passedAttempt = session.attempts.find((attempt) => attempt.passed);
@@ -721,9 +720,10 @@ function adminShell(title, subtitle, content, active = 'dashboard', actions = ''
         </nav>
         <a class="sidebar-learner" href="#/learn">Open Learner portal</a>
         <div class="sidebar-note">
-          <span>Frontend prototype</span>
-          <small>Data is stored on this device.</small>
+          <span>Saved to Lifespan LMS</span>
+          <small>Your work is stored on the server.</small>
         </div>
+        ${store.isAdmin() ? '<button class="btn ghost sidebar-logout" data-action="logout">Sign out</button>' : ''}
       </aside>
       <section class="admin-workspace">
         <header class="admin-header">
@@ -811,14 +811,14 @@ function adminActivities() {
   );
 }
 
-function adminActivityEditor(id, stepParam) {
+async function adminActivityEditor(id, stepParam) {
   const data = state();
   const draftKey = id === 'new' ? 'new' : id;
   const existing = id && id !== 'new' ? data.publications.find((item) => item.id === id) : null;
   const existingContext = existing ? activityContext(data, existing) : null;
   let draft = loadWizardDraft(draftKey);
   if (!existing && !Object.keys(draft).length) {
-    draft = applyActivityTypePreset({}, data, 'live');
+    draft = await applyActivityTypePreset({}, data, 'live');
     saveWizardDraft(draftKey, draft);
   }
   const presetType = draft.activityType || existing?.activityType || 'live';
@@ -855,7 +855,7 @@ function adminActivityEditor(id, stepParam) {
   };
   let merged = { ...defaults, ...draft };
   if (!merged.activityName) merged.activityName = defaults.activityName || preset.activityName;
-  merged = ensureWizardTemplates(merged, data);
+  merged = await ensureWizardTemplates(merged, data);
   saveWizardDraft(draftKey, {
     ...merged,
     objectives: Array.isArray(merged.objectives) ? merged.objectives.join('\n') : merged.objectives
@@ -1614,11 +1614,11 @@ function objectiveRatingQuestion(name, objective, draftValue = '') {
 
 function evaluationPages(context, draft) {
   const learnerDefaults = {
-    firstName: 'Margaret',
-    lastName: 'Whitfield',
-    credential: 'LCSW',
-    email: 'margaret.whitfield@example.com',
-    license: 'LCSW-12345',
+    firstName: '',
+    lastName: '',
+    credential: '',
+    email: '',
+    license: '',
     ...(draft.learner || {})
   };
   const bank = templateQuestionBank(context.evaluationTemplate);
@@ -1745,13 +1745,13 @@ function learnerCertificate(context, preview = false) {
   const session = preview ? previewSession(context.publication.id) : null;
   let certificate = preview
     ? session.certificate
-    : state().certificates.find((item) => item.publicationId === context.publication.id);
+    : state().certificates.find((item) => item.publicationId === context.publication.id && (!item.clientId || item.clientId === store.clientId()));
   if (!progress.eligible && !preview) {
     const content = emptyState('Certificate locked', 'Complete every required step before the certificate becomes available.', `<a class="btn primary" href="${learnerHref(context)}">View requirements</a>`);
     return learnerBase(context, content, { preview, label: 'Certificate' });
   }
   if (!certificate) {
-    const learner = progress.submission?.learner || { firstName: 'Margaret', lastName: 'Whitfield', credential: 'LCSW' };
+    const learner = progress.submission?.learner || { firstName: 'Learner', lastName: '', credential: '' };
     certificate = preview
       ? {
         id: `preview-${context.publication.id}`,
@@ -1851,27 +1851,59 @@ function renderLearner(parts) {
   return learnerLanding(context, preview);
 }
 
-function render() {
+function adminLogin() {
+  document.body.className = 'admin-page login-page';
+  return `
+    <main class="login-shell" id="main">
+      <form id="login-form" class="login-card">
+        <img src="assets/logo.png?v=3" alt="Lifespan Learning Institute">
+        <p class="eyebrow">Admin portal</p>
+        <h1>Sign in</h1>
+        <p>Use the account we created for Lifespan Learning Institute. Your courses and forms save to the server.</p>
+        <label>Email
+          <input type="email" name="email" required autocomplete="username" value="admin@lifespanlearning.org">
+        </label>
+        <label>Password
+          <input type="password" name="password" required autocomplete="current-password">
+        </label>
+        <button class="btn primary" type="submit">Sign in</button>
+      </form>
+    </main>`;
+}
+
+let renderSeq = 0;
+
+async function render() {
+  const seq = ++renderSeq;
   document.body.classList.remove('menu-open');
   const parts = routeParts();
   if (!parts.length) {
     location.hash = '#/admin/dashboard';
     return;
   }
-  if (parts[0] === 'learn' || parts[0] === 'preview') {
-    app.innerHTML = renderLearner(parts);
-    window.scrollTo(0, 0);
-    return;
+  let html = '';
+  try {
+    if (parts[0] === 'learn' || parts[0] === 'preview') {
+      html = renderLearner(parts);
+    } else if (!store.isAdmin()) {
+      html = adminLogin();
+    } else {
+      const screen = parts[1] || 'dashboard';
+      if (screen === 'activities') html = adminActivities();
+      else if (screen === 'activity') html = await adminActivityEditor(parts[2], parts[3] === 'edit' ? parts[4] : 1);
+      else if (screen === 'templates') html = adminTemplates();
+      else if (screen === 'template') html = adminTemplateEditor(parts[2]);
+      else if (screen === 'test') html = adminTestEditor(parts[2]);
+      else if (screen === 'reports') html = adminReports(parts[2]);
+      else if (screen === 'certificates') html = adminCertificates();
+      else html = adminDashboard();
+    }
+  } catch (error) {
+    toast(error.message || 'Could not load this page.', 'error');
+    html = store.isAdmin() ? adminDashboard() : adminLogin();
   }
-  const screen = parts[1] || 'dashboard';
-  if (screen === 'activities') app.innerHTML = adminActivities();
-  else if (screen === 'activity') app.innerHTML = adminActivityEditor(parts[2], parts[3] === 'edit' ? parts[4] : 1);
-  else if (screen === 'templates') app.innerHTML = adminTemplates();
-  else if (screen === 'template') app.innerHTML = adminTemplateEditor(parts[2]);
-  else if (screen === 'test') app.innerHTML = adminTestEditor(parts[2]);
-  else if (screen === 'reports') app.innerHTML = adminReports(parts[2]);
-  else if (screen === 'certificates') app.innerHTML = adminCertificates();
-  else app.innerHTML = adminDashboard();
+  if (seq !== renderSeq) return;
+  app.innerHTML = html;
   window.scrollTo(0, 0);
 }
 
@@ -1892,7 +1924,7 @@ function collectEvaluation(form) {
   return next;
 }
 
-function submitActivityForm(form, intent = 'draft') {
+async function submitActivityForm(form, intent = 'draft') {
   const { draftKey, draft } = collectWizardFormDraft(form);
   persistWizardStepAssets(form, draft);
   const activityType = draft.activityType || 'live';
@@ -1909,7 +1941,7 @@ function submitActivityForm(form, intent = 'draft') {
     return;
   }
 
-  const ensured = ensureWizardTemplates({ ...draft, activityName, activityType }, state());
+  const ensured = await ensureWizardTemplates({ ...draft, activityName, activityType }, state());
   if (requiresTest) {
     const test = byId(state().templates.tests, ensured.testTemplateId);
     if (!test || test.questions.length < 12) {
@@ -1918,7 +1950,7 @@ function submitActivityForm(form, intent = 'draft') {
     }
   }
 
-  const catalog = store.upsertActivityCatalog({
+  const catalog = await store.upsertActivityCatalog({
     name: activityName,
     activityType,
     location: String(draft.location || '').trim(),
@@ -1933,7 +1965,7 @@ function submitActivityForm(form, intent = 'draft') {
   });
 
   const existingPub = form.dataset.id ? byId(state().publications, form.dataset.id) : null;
-  const result = store.savePublication({
+  const result = await store.savePublication({
     id: form.dataset.id || undefined,
     courseId: catalog.courseId,
     versionId: catalog.versionId,
@@ -1960,7 +1992,7 @@ function submitActivityForm(form, intent = 'draft') {
   }
 
   if (intent === 'publish' && result.publication.status !== 'published') {
-    const published = store.togglePublication(result.publication.id);
+    const published = await store.togglePublication(result.publication.id);
     if (!published.ok) {
       toast(published.errors.join(' '), 'error');
       sessionStorage.setItem(`activity-saved-${result.publication.id}`, '1');
@@ -2010,10 +2042,23 @@ function exportReport(publicationId) {
   toast('CSV report downloaded.');
 }
 
-document.addEventListener('submit', (event) => {
+document.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.target;
-  if (!form.reportValidity()) return;
+  if (form.id !== 'login-form' && !form.reportValidity()) return;
+
+  if (form.id === 'login-form') {
+    const formData = new FormData(form);
+    try {
+      await store.login(String(formData.get('email') || ''), String(formData.get('password') || ''));
+      toast('Signed in.');
+      location.hash = '#/admin/dashboard';
+      await render();
+    } catch (error) {
+      toast(error.message || 'Could not sign in.', 'error');
+    }
+    return;
+  }
 
   if (form.id === 'activity-form') {
     if (Number(form.dataset.step) !== 6) return;
@@ -2021,7 +2066,11 @@ document.addEventListener('submit', (event) => {
     syncObjectivesField(form);
     const submitter = event.submitter;
     const intent = submitter?.value || 'draft';
-    submitActivityForm(form, intent);
+    try {
+      await submitActivityForm(form, intent);
+    } catch (error) {
+      toast(error.message || 'Could not save the activity.', 'error');
+    }
     return;
   }
   if (form.id === 'template-form') {
@@ -2036,14 +2085,18 @@ document.addEventListener('submit', (event) => {
         };
       }).filter((item) => item.text);
     });
-    const result = store.saveEvaluationTemplate(form.dataset.id, {
-      name: new FormData(form).get('name'),
-      sections
-    });
-    if (!result.ok) toast(result.errors.join(' '), 'error');
-    else {
-      toast('Evaluation form saved.');
-      render();
+    try {
+      const result = await store.saveEvaluationTemplate(form.dataset.id, {
+        name: new FormData(form).get('name'),
+        sections
+      });
+      if (!result.ok) toast((result.errors || []).join(' '), 'error');
+      else {
+        toast('Evaluation form saved.');
+        await render();
+      }
+    } catch (error) {
+      toast(error.message || 'Could not save the evaluation.', 'error');
     }
     return;
   }
@@ -2053,11 +2106,15 @@ document.addEventListener('submit', (event) => {
       toast('Add at least one complete question.', 'error');
       return;
     }
-    const result = store.saveTestTemplate(form.dataset.id, payload);
-    if (!result.ok) toast(result.errors.join(' '), 'error');
-    else {
-      toast('Knowledge check saved.');
-      render();
+    try {
+      const result = await store.saveTestTemplate(form.dataset.id, payload);
+      if (!result.ok) toast((result.errors || []).join(' '), 'error');
+      else {
+        toast('Knowledge check saved.');
+        await render();
+      }
+    } catch (error) {
+      toast(error.message || 'Could not save the knowledge check.', 'error');
     }
     return;
   }
@@ -2067,38 +2124,46 @@ document.addEventListener('submit', (event) => {
     const page = Number(form.dataset.page);
     const preview = form.dataset.preview === 'true';
     const pages = evaluationPages(context, draft);
-    if (preview) previewSession(form.dataset.id).draft = draft;
-    else store.saveDraft(form.dataset.id, draft);
-    if (page < pages.length - 1) {
-      location.hash = learnerHref(context, `evaluation/${page + 1}`, preview);
-      return;
+    try {
+      if (preview) previewSession(form.dataset.id).draft = draft;
+      else await store.saveDraft(form.dataset.id, draft);
+      if (page < pages.length - 1) {
+        location.hash = learnerHref(context, `evaluation/${page + 1}`, preview);
+        return;
+      }
+      const response = {
+        ratings: draft.ratings,
+        objectiveRatings: context.publication.objectives.map((_, index) => draft.ratings[`objective.${index}`]),
+        presenterRatings: Object.fromEntries(Object.entries(draft.ratings).filter(([key]) => key.startsWith('presenter.'))),
+        comments: draft.comments,
+        learner: draft.learner
+      };
+      if (preview) previewSession(form.dataset.id).submission = response;
+      else await store.submitEvaluation(form.dataset.id, response);
+      const nextMessage = ACTIVITY_TYPES[context.publication.activityType].requiresTest
+        ? 'Thank you. Next: take the knowledge check.'
+        : 'Thank you. Next: confirm attendance.';
+      toast(nextMessage);
+      location.hash = learnerHref(context, ACTIVITY_TYPES[context.publication.activityType].requiresTest ? 'test' : 'attendance', preview);
+    } catch (error) {
+      toast(error.message || 'Could not save your answers.', 'error');
     }
-    const response = {
-      ratings: draft.ratings,
-      objectiveRatings: context.publication.objectives.map((_, index) => draft.ratings[`objective.${index}`]),
-      presenterRatings: Object.fromEntries(Object.entries(draft.ratings).filter(([key]) => key.startsWith('presenter.'))),
-      comments: draft.comments,
-      learner: draft.learner
-    };
-    if (preview) previewSession(form.dataset.id).submission = response;
-    else store.submitEvaluation(form.dataset.id, response);
-    const nextMessage = ACTIVITY_TYPES[context.publication.activityType].requiresTest
-      ? 'Thank you. Next: take the knowledge check.'
-      : 'Thank you. Next: confirm attendance.';
-    toast(nextMessage);
-    location.hash = learnerHref(context, ACTIVITY_TYPES[context.publication.activityType].requiresTest ? 'test' : 'attendance', preview);
     return;
   }
   if (form.id === 'attendance-form') {
     const context = activityContext(state(), form.dataset.id);
     const preview = form.dataset.preview === 'true';
     const progress = progressFor(context, preview);
-    if (preview) previewSession(form.dataset.id).attendanceConfirmed = true;
-    else {
-      store.confirmAttendance(form.dataset.id);
-      store.issueCertificate(form.dataset.id, progress.submission.learner);
+    try {
+      if (preview) previewSession(form.dataset.id).attendanceConfirmed = true;
+      else {
+        await store.confirmAttendance(form.dataset.id);
+        await store.issueCertificate(form.dataset.id, progress.submission.learner);
+      }
+      location.hash = learnerHref(context, 'certificate', preview);
+    } catch (error) {
+      toast(error.message || 'Could not confirm attendance.', 'error');
     }
-    location.hash = learnerHref(context, 'certificate', preview);
     return;
   }
   if (form.id === 'test-form') {
@@ -2108,16 +2173,20 @@ document.addEventListener('submit', (event) => {
     const answers = { ...stored, ...collectAnswerMap(form) };
     const result = scoreTest(context.testTemplate, answers);
     clearTestAnswers(form.dataset.id, preview);
-    if (preview) previewSession(form.dataset.id).attempts.push({ ...result, answers });
-    else store.recordAttempt(form.dataset.id, result, answers);
-    if (result.passed) {
-      const progress = progressFor(context, preview);
-      if (!preview) store.issueCertificate(form.dataset.id, progress.submission.learner);
-      toast(`Passed with ${result.percent}%. Certificate unlocked.`);
-      location.hash = learnerHref(context, 'certificate', preview);
-    } else {
-      toast(`${result.percent}% — ${context.testTemplate.passPercent || 80}% is required.`, 'error');
-      location.hash = learnerHref(context, 'test/0', preview);
+    try {
+      if (preview) previewSession(form.dataset.id).attempts.push({ ...result, answers });
+      else await store.recordAttempt(form.dataset.id, result, answers);
+      if (result.passed) {
+        const progress = progressFor(context, preview);
+        if (!preview) await store.issueCertificate(form.dataset.id, progress.submission.learner);
+        toast(`Passed with ${result.percent}%. Certificate unlocked.`);
+        location.hash = learnerHref(context, 'certificate', preview);
+      } else {
+        toast(`${result.percent}% — ${context.testTemplate.passPercent || 80}% is required.`, 'error');
+        location.hash = learnerHref(context, 'test/0', preview);
+      }
+    } catch (error) {
+      toast(error.message || 'Could not record the attempt.', 'error');
     }
   }
 });
@@ -2159,9 +2228,10 @@ document.addEventListener('change', (event) => {
   if (event.target.name === 'activityType' && event.target.closest('#activity-form')) {
     const form = event.target.closest('#activity-form');
     const { draftKey, draft } = collectWizardFormDraft(form);
-    const next = applyActivityTypePreset(draft, state(), event.target.value);
-    saveWizardDraft(draftKey, next);
-    render();
+    applyActivityTypePreset(draft, state(), event.target.value).then((next) => {
+      saveWizardDraft(draftKey, next);
+      render();
+    }).catch((error) => toast(error.message || 'Could not update activity type.', 'error'));
     return;
   }
   if (event.target.id === 'report-filter') {
@@ -2191,6 +2261,7 @@ document.addEventListener('click', async (event) => {
   const target = event.target.closest('[data-action]');
   if (!target) return;
   const { action, id, value } = target.dataset;
+  try {
   if (action === 'menu') {
     document.body.classList.toggle('menu-open');
   } else if (action === 'menu-close') {
@@ -2204,7 +2275,7 @@ document.addEventListener('click', async (event) => {
     const draft = collectEvaluation(form);
     const preview = form.dataset.preview === 'true';
     if (preview) previewSession(form.dataset.id).draft = draft;
-    else store.saveDraft(form.dataset.id, draft);
+    else await store.saveDraft(form.dataset.id, draft);
     const context = activityContext(state(), form.dataset.id);
     const page = Number(form.dataset.page);
     if (page > 0) location.hash = learnerHref(context, `evaluation/${page - 1}`, preview);
@@ -2222,8 +2293,8 @@ document.addEventListener('click', async (event) => {
     const { draftKey, draft } = collectWizardFormDraft(form);
     const activityType = draft.activityType || 'live';
     const currentStep = Number(form.dataset.step);
-    if (currentStep === 4 || currentStep === 5) persistWizardStepAssets(form, draft);
-    const nextDraft = ensureWizardTemplates({ ...draft, activityType }, state());
+    if (currentStep === 4 || currentStep === 5) await persistWizardStepAssets(form, draft);
+    const nextDraft = await ensureWizardTemplates({ ...draft, activityType }, state());
     if (!ACTIVITY_TYPES[activityType]?.requiresTest) nextDraft.testTemplateId = '';
     saveWizardDraft(draftKey, nextDraft);
     let targetStep = currentStep;
@@ -2246,20 +2317,25 @@ document.addEventListener('click', async (event) => {
     const answers = { ...testAnswers(form.dataset.id, preview), ...collectAnswerMap(form) };
     saveTestAnswers(form.dataset.id, preview, answers);
     location.hash = learnerHref(context, `test/${qIndex + 1}`, preview);
+  } else if (action === 'logout') {
+    await store.logout();
+    toast('Signed out.');
+    location.hash = '#/admin/dashboard';
+    await render();
   } else if (action === 'duplicate-publication') {
-    const duplicate = store.duplicatePublication(id);
+    const duplicate = await store.duplicatePublication(id);
     toast('Activity duplicated as a draft.');
     location.hash = `#/admin/activity/${duplicate.id}/edit/1`;
   } else if (action === 'duplicate-template') {
-    const duplicate = store.duplicateEvaluationTemplate(id);
+    const duplicate = await store.duplicateEvaluationTemplate(id);
     toast('Template duplicated.');
     location.hash = `#/admin/template/${duplicate.id}`;
   } else if (action === 'duplicate-test') {
-    const duplicate = store.duplicateTestTemplate(id);
+    const duplicate = await store.duplicateTestTemplate(id);
     toast('Knowledge check duplicated. You can rename it on the next screen.');
     location.hash = `#/admin/test/${duplicate.id}`;
   } else if (action === 'create-test') {
-    const created = store.createTestTemplate('New Knowledge Check');
+    const created = await store.createTestTemplate('New Knowledge Check');
     toast('New knowledge check created.');
     location.hash = `#/admin/test/${created.id}`;
   } else if (action === 'goto-eval-template') {
@@ -2402,7 +2478,7 @@ document.addEventListener('click', async (event) => {
     refreshWizardPreview();
     toast('Question removed.');
   } else if (action === 'toggle-publish') {
-    const result = store.togglePublication(id);
+    const result = await store.togglePublication(id);
     if (!result.ok) toast(result.errors.join(' '), 'error');
     else {
       toast(result.publication.status === 'published' ? 'Activity published.' : 'Activity returned to draft.');
@@ -2434,7 +2510,10 @@ document.addEventListener('click', async (event) => {
     }
     toast('Certificate downloaded.');
   }
+  } catch (error) {
+    toast(error.message || 'Could not complete that action.', 'error');
+  }
 });
 
-window.addEventListener('hashchange', render);
-render();
+window.addEventListener('hashchange', () => { render(); });
+store.bootstrap().then(() => render()).catch(() => render());

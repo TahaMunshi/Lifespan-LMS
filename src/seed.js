@@ -50,263 +50,49 @@ export const STANDARD_QUESTIONS = {
   ]
 };
 
-const objectives = {
-  sensorimotor: [
-    'Determine three bodily cues that can indicate hopelessness, helplessness, and despair in session.',
-    'Assess the role of the body in generating and maintaining depression in psychotherapy.',
-    'Analyze the efficacy of working with the body to improve clinical outcomes.',
-    'Demonstrate three body-oriented interventions for treating suicidality and related emotions.',
-    'Distinguish the role of mindfulness from talk therapy in treatment.'
-  ],
-  attachment: [
-    'Describe the core principles of attachment theory.',
-    'Identify common attachment patterns in clinical presentations.',
-    'Apply attachment concepts when assessing adult clients.',
-    'Use attachment-informed interventions in treatment planning.'
-  ],
-  trauma: [
-    'Recognize signs of dysregulation in trauma presentations.',
-    'Apply stabilization techniques before trauma processing.',
-    'Differentiate top-down and bottom-up interventions.',
-    'Create a phased trauma-informed treatment plan.'
-  ]
-};
-
-const testQuestions = [
-  ['Which response best describes a body-oriented intervention?', ['Ignoring physical sensations', 'Tracking physical sensations safely', 'Avoiding grounding', 'Focusing only on diagnosis'], 1],
-  ['A primary purpose of grounding is to:', ['Increase activation', 'Support present-moment orientation', 'Remove all emotion', 'Replace consent'], 1],
-  ['Mindfulness in clinical care emphasizes:', ['Judgment', 'Present-moment awareness', 'Suppression', 'Distraction only'], 1],
-  ['Before trauma processing, clinicians should first assess:', ['Marketing preferences', 'Stability and available resources', 'Room color', 'Handwriting'], 1],
-  ['A sign of autonomic activation may include:', ['Changes in breath', 'A fixed diagnosis', 'Course enrollment', 'No body response'], 0],
-  ['A collaborative intervention should:', ['Override the client', 'Respect pacing and consent', 'Ignore feedback', 'Guarantee an outcome'], 1],
-  ['The window of tolerance describes:', ['A billing period', 'A workable range of arousal', 'A test deadline', 'A license category'], 1],
-  ['Resource development is intended to:', ['Increase overwhelm', 'Support regulation and capacity', 'Prevent reflection', 'Replace treatment planning'], 1],
-  ['Tracking asks a learner or client to notice:', ['Only thoughts', 'Moment-to-moment experience', 'Only past events', 'Administrative rules'], 1],
-  ['Clinical pacing should be guided by:', ['The clock alone', 'Capacity and response', 'A fixed script', 'The presenter’s preference'], 1],
-  ['An ethical trauma intervention includes:', ['Informed consent', 'Forced disclosure', 'Guaranteed recovery', 'Ignoring boundaries'], 0],
-  ['Integration can be supported by:', ['Reflection and regulated practice', 'Avoiding all sensation', 'Increasing urgency', 'Removing choice'], 0]
-].map(([text, options, correct], index) => ({
-  id: `tq-${index + 1}`,
-  type: 'mcq',
-  objectiveIndex: index % 4,
-  text,
-  options,
-  correct,
-  keywords: []
-}));
-
 export function cloneStandardSections() {
   return structuredClone(STANDARD_QUESTIONS);
 }
 
-const baseState = {
-  schemaVersion: 6,
-  templates: {
-    evaluations: [
-      {
-        id: 'eval-standard-v1',
-        name: 'Standard CE Evaluation',
-        version: 1,
-        status: 'active',
-        dynamicSections: ['objectives', 'presenters', 'activity'],
-        sections: cloneStandardSections()
-      }
-    ],
-    tests: [
-      {
-        id: 'test-standard-v1',
-        name: 'Standard Knowledge Check',
-        version: 1,
-        passPercent: 80,
-        maxAttempts: 3,
-        minimumQuestions: 12,
-        questions: testQuestions
-      }
-    ],
-    certificates: [
-      { id: 'cert-live-v1', name: 'Live Program Certificate', version: 2, activityTypes: ['live'] },
-      { id: 'cert-study-v1', name: 'Home Study & Hybrid Certificate', version: 2, activityTypes: ['home-study', 'hybrid'] }
-    ]
-  },
-  courses: [
-    { id: 'course-sensorimotor', name: 'Words are Not Enough: Sensorimotor Interventions for Suicidality' },
-    { id: 'course-attachment', name: 'Attachment Theory Across the Lifespan' },
-    { id: 'course-trauma', name: 'Trauma and the Body: Sensorimotor Approaches' }
-  ],
-  versions: [
-    { id: 'version-sensorimotor-live', courseId: 'course-sensorimotor', name: 'Live Workshop', activityType: 'live' },
-    { id: 'version-attachment-home', courseId: 'course-attachment', name: 'Home Study', activityType: 'home-study' },
-    { id: 'version-trauma-hybrid', courseId: 'course-trauma', name: '4-Module Hybrid', activityType: 'hybrid' }
-  ],
-  cohorts: [
-    { id: 'cohort-sensorimotor-2026', versionId: 'version-sensorimotor-live', name: 'September 2026', location: 'Los Angeles, CA', startDate: '2026-09-12', endDate: '2026-09-13', presenters: ['Pat Ogden, PhD', 'Bonnie Goldstein, PhD'] },
-    { id: 'cohort-attachment-2026', versionId: 'version-attachment-home', name: '2026 Online Cohort', location: 'Online', startDate: '2026-09-01', endDate: '2027-08-31', presenters: ['Marian Ellis, PhD'] },
-    { id: 'cohort-trauma-2026', versionId: 'version-trauma-hybrid', name: 'Fall 2026', location: 'Hybrid — Los Angeles & Online', startDate: '2026-10-01', endDate: '2026-12-15', presenters: ['Pat Ogden, PhD', 'Laila Jorba, PhD'] }
-  ],
-  modules: [
-    { id: 'module-sensorimotor', cohortId: 'cohort-sensorimotor-2026', name: 'Live Workshop', creditHours: 6, startDate: '2026-09-12', endDate: '2026-09-13' },
-    { id: 'module-attachment', cohortId: 'cohort-attachment-2026', name: 'Complete Home Study', creditHours: 6, startDate: '2026-09-01', endDate: '2027-08-31' },
-    { id: 'module-trauma-1', cohortId: 'cohort-trauma-2026', name: 'Module 1 — Foundations', creditHours: 6, startDate: '2026-10-01', endDate: '2026-10-02' }
-  ],
-  publications: [
-    {
-      id: 'pub-sensorimotor-live',
-      slug: 'sensorimotor-live-2026',
-      status: 'published',
-      revision: 1,
-      courseId: 'course-sensorimotor',
-      versionId: 'version-sensorimotor-live',
-      cohortId: 'cohort-sensorimotor-2026',
-      moduleId: 'module-sensorimotor',
-      evaluationTemplateId: 'eval-standard-v1',
-      testTemplateId: null,
-      certificateTemplateId: 'cert-live-v1',
-      activityType: 'live',
-      deadline: '2026-09-27',
-      objectives: objectives.sensorimotor,
-      createdAt: '2026-09-01T12:00:00Z',
-      publishedAt: '2026-09-05T12:00:00Z'
-    },
-    {
-      id: 'pub-attachment-home',
-      slug: 'attachment-home-study-2026',
-      status: 'published',
-      revision: 1,
-      courseId: 'course-attachment',
-      versionId: 'version-attachment-home',
-      cohortId: 'cohort-attachment-2026',
-      moduleId: 'module-attachment',
-      evaluationTemplateId: 'eval-standard-v1',
-      testTemplateId: 'test-standard-v1',
-      certificateTemplateId: 'cert-study-v1',
-      activityType: 'home-study',
-      deadline: '2027-08-31',
-      objectives: objectives.attachment,
-      createdAt: '2026-09-01T12:00:00Z',
-      publishedAt: '2026-09-06T12:00:00Z'
-    },
-    {
-      id: 'pub-trauma-hybrid',
-      slug: 'trauma-hybrid-module-1',
-      status: 'draft',
-      revision: 1,
-      courseId: 'course-trauma',
-      versionId: 'version-trauma-hybrid',
-      cohortId: 'cohort-trauma-2026',
-      moduleId: 'module-trauma-1',
-      evaluationTemplateId: 'eval-standard-v1',
-      testTemplateId: 'test-standard-v1',
-      certificateTemplateId: 'cert-study-v1',
-      activityType: 'hybrid',
-      deadline: '2026-12-29',
-      objectives: objectives.trauma,
-      createdAt: '2026-09-10T12:00:00Z',
-      publishedAt: null
-    }
-  ],
-  submissions: [],
-  attempts: [],
-  attendanceConfirmations: [],
-  certificates: [
-    {
-      id: 'certificate-demo-live',
-      number: 'LLI-2026-004182',
-      publicationId: 'pub-sensorimotor-live',
-      issuedAt: '2026-09-14T16:30:00Z',
-      learner: {
-        firstName: 'Margaret',
-        lastName: 'Whitfield',
-        credential: 'LCSW',
-        email: 'margaret.whitfield@example.com',
-        license: 'LCSW-12345'
-      },
-      snapshot: {
-        publicationId: 'pub-sensorimotor-live',
-        revision: 1,
-        activityType: 'live',
-        courseName: 'Words are Not Enough: Sensorimotor Interventions for Suicidality',
-        versionName: 'Live Workshop',
-        cohortName: 'September 2026',
-        moduleName: 'Live Workshop',
-        presenters: ['Pat Ogden, PhD', 'Bonnie Goldstein, PhD'],
-        location: 'Los Angeles, CA',
-        creditHours: 6,
-        activityDates: ['2026-09-12', '2026-09-13'],
-        objectives: objectives.sensorimotor
-      },
-      templateId: 'cert-live-v1'
-    }
-  ],
-  drafts: {}
-};
-
-const ratingKeys = [
-  ...STANDARD_QUESTIONS.learning.map((q) => `learning.${q.id}`),
-  ...STANDARD_QUESTIONS.environment.map((q) => `environment.${q.id}`),
-  ...STANDARD_QUESTIONS.administration.map((q) => `administration.${q.id}`)
-];
-
-const reportSubmissions = Array.from({ length: 18 }, (_, index) => {
-  const publicationId = index < 10 ? 'pub-sensorimotor-live' : 'pub-attachment-home';
-  const objectiveCount = publicationId === 'pub-sensorimotor-live' ? objectives.sensorimotor.length : objectives.attachment.length;
-  const presenterCount = publicationId === 'pub-sensorimotor-live'
-    ? baseState.cohorts[0].presenters.length
-    : baseState.cohorts[1].presenters.length;
-  const base = 3 + (index % 3);
-  const ratings = Object.fromEntries(ratingKeys.map((key, qIndex) => [key, Math.min(5, Math.max(1, base + ((qIndex + index) % 3) - 1))]));
-  const presenterRatings = Object.fromEntries(Array.from({ length: presenterCount }, (_, presenterIndex) => (
-    STANDARD_QUESTIONS.presenter.map((question, questionIndex) => [
-      `presenter.${presenterIndex}.${question.id}`,
-      Math.min(5, Math.max(1, base + ((questionIndex + presenterIndex + index) % 3) - 1))
-    ])
-  )).flat());
-  return {
-    id: `seed-submission-${index + 1}`,
-    publicationId,
-    publicationRevision: 1,
-    submittedAt: `2026-09-${String(2 + index).padStart(2, '0')}T15:00:00Z`,
-    ratings,
-    objectiveRatings: Array.from({ length: objectiveCount }, (_, i) => 3 + ((i + index) % 3)),
-    presenterRatings,
-    comments: index % 4 === 0 ? { likedMost: 'The practical examples and clear clinical applications.' } : {},
-    snapshot: {
-      courseName: publicationId === 'pub-sensorimotor-live' ? baseState.courses[0].name : baseState.courses[1].name,
-      objectives: publicationId === 'pub-sensorimotor-live' ? objectives.sensorimotor : objectives.attachment
-    }
-  };
-});
-
-baseState.submissions = reportSubmissions;
-baseState.submissions.push({
-  id: 'demo-live-completion',
-  publicationId: 'pub-sensorimotor-live',
-  publicationRevision: 1,
-  submittedAt: '2026-09-14T15:00:00Z',
-  ratings: Object.fromEntries(ratingKeys.map((key) => [key, 5])),
-  objectiveRatings: objectives.sensorimotor.map(() => 5),
-  presenterRatings: Object.fromEntries(
-    baseState.cohorts[0].presenters.flatMap((_, presenterIndex) => (
-      STANDARD_QUESTIONS.presenter.map((question) => [`presenter.${presenterIndex}.${question.id}`, 5])
-    ))
-  ),
-  comments: { likedMost: 'Clear clinical examples and practical demonstrations.' },
-  learner: {
-    firstName: 'Margaret',
-    lastName: 'Whitfield',
-    credential: 'LCSW',
-    email: 'margaret.whitfield@example.com',
-    license: 'LCSW-12345'
-  },
-  snapshot: {
-    courseName: baseState.courses[0].name,
-    objectives: objectives.sensorimotor,
-    presenters: baseState.cohorts[0].presenters
-  }
-});
-baseState.attendanceConfirmations = [
-  { id: 'demo-attendance-live', publicationId: 'pub-sensorimotor-live', confirmedAt: '2026-09-14T16:00:00Z' }
-];
-
 export function createSeedState() {
-  return structuredClone(baseState);
+  return {
+    schemaVersion: 6,
+    templates: {
+      evaluations: [
+        {
+          id: 'eval-standard-v1',
+          name: 'Standard CE Evaluation',
+          version: 1,
+          status: 'active',
+          dynamicSections: ['objectives', 'presenters', 'activity'],
+          sections: cloneStandardSections()
+        }
+      ],
+      tests: [
+        {
+          id: 'test-standard-v1',
+          name: 'Standard Knowledge Check',
+          version: 1,
+          passPercent: 80,
+          maxAttempts: 3,
+          minimumQuestions: 12,
+          questions: []
+        }
+      ],
+      certificates: [
+        { id: 'cert-live-v1', name: 'Live Program Certificate', version: 2, activityTypes: ['live'] },
+        { id: 'cert-study-v1', name: 'Home Study & Hybrid Certificate', version: 2, activityTypes: ['home-study', 'hybrid'] }
+      ]
+    },
+    courses: [],
+    versions: [],
+    cohorts: [],
+    modules: [],
+    publications: [],
+    submissions: [],
+    attempts: [],
+    attendanceConfirmations: [],
+    certificates: [],
+    drafts: {}
+  };
 }
